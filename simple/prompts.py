@@ -418,7 +418,7 @@ CODE_REACT_PROMPT = """任务：根据用户需求，操作本地代码文件。
 - 修改完成后必须再次 read_file 验证修改结果是否符合预期
 - 确认无误后使用 answer 输出修改总结
 - 严禁修改与用户需求无关的代码
-- filepath 必须使用绝对路径（如 d:/python/RAG/simple/xxx.py）
+- filepath 必须使用绝对路径（如 d:/workspace/project/src/xxx.py，必须是工作区白名单内的真实路径）
 - 如果工具返回错误信息（如"未找到"、"出现 N 次"），应在下一轮调整后重试
 - 最多 {max_rounds} 轮操作，达上限应基于当前结果输出 answer
 

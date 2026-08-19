@@ -42,15 +42,13 @@ from tools.code_tool.diff_preview import (
     _generate_diff,
 )
 
-# --- 工具实现（裸函数） + @tool 装饰版本 ---
+# --- 工具实现（裸函数 + 内部 @tool 版本） ---
+# ⚠️ 注意：read_file/edit_file/write_file/list_dir/grep_code 的 @tool 装饰版本**不再对外导出**。
+# 这些版本缺少 session_id 参数，若通过 bind_tools 调用会脱离会话白名单（用户前端"打开项目"失效）。
+# 新代码请直接使用 *_impl 裸函数并显式传入 session_id（参考 skills/code_gen.py 的做法）。
+# 若确实需要给 LangChain 构造 @tool，请按 session_id 动态包装（在 Skill.execute 内闭包注入 session_id）。
 from tools.code_tool.code_tools import (
-    # @tool 装饰版本（给 LLM bind_tools）
-    read_file,
-    edit_file,
-    write_file,
-    list_dir,
-    grep_code,
-    # 裸函数版本（给 LangGraph 节点 / 直接调用）
+    # 裸函数版本（推荐：会话安全，必须传 session_id）
     read_file_impl,
     edit_file_impl,
     write_file_impl,
@@ -76,13 +74,7 @@ __all__ = [
     "get_pending_modifications",
     "confirm_modifications",
     "cancel_modifications",
-    # @tool 装饰版本
-    "read_file",
-    "edit_file",
-    "write_file",
-    "list_dir",
-    "grep_code",
-    # 裸函数版本
+    # 裸函数版本（推荐使用：所有调用方必须显式传 session_id）
     "read_file_impl",
     "edit_file_impl",
     "write_file_impl",

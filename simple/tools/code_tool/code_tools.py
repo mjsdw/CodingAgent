@@ -143,8 +143,8 @@ def list_dir_impl(dirpath: str, session_id: str = None) -> str:
     except Exception as e:
         return f"错误：列目录异常 - {e}"
 
-    # 过滤隐藏文件/目录（以 . 开头）和 __pycache__
-    visible = [e for e in entries if not e.name.startswith(".") and e.name != "__pycache__"]
+    # 统一复用 WORKSPACE_HIDDEN_DIRS 过滤隐藏目录（.venv/.git/__pycache__/node_modules 等），并跳过 . 开头隐藏文件
+    visible = [e for e in entries if not (e.is_dir() and _is_hidden_dir(e.name)) and not (e.is_file() and e.name.startswith("."))]
     if not visible:
         return f"（目录 {p.name} 为空）"
 
@@ -193,7 +193,7 @@ def _grep_search(regex, roots: list) -> str:
 
     限制：
     - 仅搜索 _GREP_ALLOWED_EXTS 中的代码/文本文件
-    - 跳过 __pycache__、.git 等目录
+    - 跳过 WORKSPACE_HIDDEN_DIRS 全部隐藏目录（.venv/.git/__pycache__/node_modules 等）
     - 单文件最多 20 条，总数最多 50 条（防 prompt 膨胀）
     - 单行截断 200 字符
     """
@@ -211,7 +211,8 @@ def _grep_search(regex, roots: list) -> str:
                     continue
                 if file_path.suffix.lower() not in _GREP_ALLOWED_EXTS:
                     continue
-                if "__pycache__" in file_path.parts or ".git" in file_path.parts:
+                # 统一复用 WORKSPACE_HIDDEN_DIRS：任何一级目录名命中即跳过（含 .venv/.git/__pycache__/node_modules 等）
+                if any(_is_hidden_dir(part) for part in file_path.parts):
                     continue
 
                 try:

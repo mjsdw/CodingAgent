@@ -10,13 +10,8 @@
 #   - query_rewriter      Query 改写（@tool + plain 双接口）
 #   - weather_search      天气查询（仅 @tool，待 WeatherSkill 时扩展）
 #   - web_search          联网搜索（@tool + docs 双接口）
-#   - read_file           读取代码文件（@tool + impl 双接口）
-#   - edit_file           修改代码文件（@tool + impl 双接口，自动备份）
-#   - write_file          覆写代码文件（@tool + impl 双接口，自动备份）
-#   - list_dir           列出目录内容（@tool + impl 双接口）
-#   - grep_code          代码内容搜索（@tool + impl 双接口，支持正则）
-#   - undo_last          撤销最近一次修改（plain 接口，API 直接调）
-#   - get_history        获取文件修改历史（plain 接口，API 直接调）
+#   - undo_last           撤销最近一次修改（plain 接口，API 直接调）
+#   - get_history         获取文件修改历史（plain 接口，API 直接调）
 #   - 工作区相关（plain 接口，给 app.py 的 workspace API 调用）：
 #     - add_session_workspace     打开项目时加入会话级白名单
 #     - remove_session_workspace  关闭项目时移除白名单
@@ -24,19 +19,26 @@
 #     - list_tree_impl            扫描目录树（懒加载）
 #     - read_workspace_file_impl  读取工作区文件（前端 Monaco 展示）
 #     - save_workspace_file_impl  保存工作区文件（前端 Ctrl+S，自动备份）
+#   - 代码读写（plain 接口，推荐使用，必须显式传 session_id）：
+#     - read_file_impl / edit_file_impl / write_file_impl
+#     - list_dir_impl / grep_code_impl
+#   ⚠️ 旧的 read_file/edit_file/write_file/list_dir/grep_code @tool 装饰版本已停止公开导出。
+#      它们缺少 session_id 参数 → 无法访问会话级白名单（用户前端"打开项目"会失效）。
+#      新代码请使用 *_impl 裸函数并手动传 session_id（参考 skills/code_gen.py 的动作分发表实现）。
 
 from tools.knowledge_search import knowledge_search, knowledge_search_docs
 from tools.query_rewriter import query_rewriter, query_rewriter_plain
 from tools.weather_search import weather_search
 from tools.web_search import web_search, web_search_docs
 from tools.code_tool import (
-    read_file, edit_file, write_file,
-    list_dir, grep_code,
     undo_last, get_history,
     # 工作区相关
     add_session_workspace, remove_session_workspace, get_session_workspaces,
     has_session_files,
     list_tree_impl, read_workspace_file_impl, save_workspace_file_impl,
+    # 代码读写 - 仅导出带 session_id 的 *_impl 裸函数版本
+    read_file_impl, edit_file_impl, write_file_impl,
+    list_dir_impl, grep_code_impl,
     # Diff 预览与待确认修改
     preview_edit_impl, preview_write_impl,
     get_pending_modifications, confirm_modifications, cancel_modifications,
@@ -50,11 +52,6 @@ __all__ = [
     "weather_search",
     "web_search",
     "web_search_docs",
-    "read_file",
-    "edit_file",
-    "write_file",
-    "list_dir",
-    "grep_code",
     "undo_last",
     "get_history",
     # 工作区相关
@@ -65,6 +62,12 @@ __all__ = [
     "list_tree_impl",
     "read_workspace_file_impl",
     "save_workspace_file_impl",
+    # 代码读写（*_impl 裸函数，必须传 session_id）
+    "read_file_impl",
+    "edit_file_impl",
+    "write_file_impl",
+    "list_dir_impl",
+    "grep_code_impl",
     # Diff 预览与待确认修改
     "preview_edit_impl",
     "preview_write_impl",

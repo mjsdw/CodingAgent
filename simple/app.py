@@ -373,7 +373,7 @@ async def code_undo(req: CodeUndoRequest):
 
     使用方式：
         POST /api/code/undo
-        Body: {"filepath": "d:/python/RAG/simple/main.py"}
+        Body: {"filepath": "d:/workspace/project/src/main.py"}
 
     返回：
         - status="undone"      → 撤销成功，文件已恢复
@@ -422,7 +422,7 @@ async def code_history(filepath: str):
     """查询指定文件的修改历史列表。
 
     使用方式：
-        GET /api/code/history?filepath=d:/python/RAG/simple/main.py
+        GET /api/code/history?filepath=d:/workspace/project/src/main.py
 
     返回：按 snapshot_id 升序排列的历史记录列表。
     """

@@ -19,6 +19,7 @@ from config import (
     UPLOAD_DIR,
     WORKSPACE_MAX_PROJECTS,
     WORKSPACE_ALLOWED_ROOTS,
+    WORKSPACE_HIDDEN_DIRS,
 )
 
 
@@ -195,14 +196,28 @@ def _is_blocked(path: Path) -> bool:
     return False
 
 
+# WORKSPACE_HIDDEN_DIRS 转小写集合，路径段命中即视为隐藏目录组件（含 .venv/.git/__pycache__/node_modules 等）
+_HIDDEN_DIR_NAMES_LOWER = {d.lower() for d in WORKSPACE_HIDDEN_DIRS}
+
+
+def _contains_hidden_dir_component(path: Path) -> bool:
+    """判断路径中是否包含 WORKSPACE_HIDDEN_DIRS 定义的隐藏目录组件（任一段命中即 True）。
+
+    即使父目录在白名单中（如用户打开了项目根），只要路径穿过 .venv/.git/node_modules 等隐藏目录，
+    就视为不安全（防止 Agent 改虚拟环境/读 git 凭据/遍历 node_modules）。
+    对路径的所有 components（含文件名）统一对比，确保即使伪装成文件名的敏感名字也被拦住。
+    """
+    return any(part.lower() in _HIDDEN_DIR_NAMES_LOWER for part in path.parts)
+
+
 def _validate_path(filepath: str, session_id: str = None) -> Path:
     """校验文件路径安全性，返回 Path 对象。
 
-    校验顺序：白名单（必须命中）→ 黑名单（必须未命中）→ 文件存在性
+    校验顺序：白名单（必须命中）→ 隐藏目录组件（必须未命中）→ 黑名单（必须未命中）
 
     :param filepath: 待校验文件路径
     :param session_id: 会话 ID，传入时合并会话级动态白名单
-    :raises ValueError: 路径不在白名单、命中黑名单或文件不存在
+    :raises ValueError: 路径不在白名单、穿越隐藏目录、命中黑名单或文件不存在
     """
     p = Path(filepath).resolve()
 
@@ -214,7 +229,14 @@ def _validate_path(filepath: str, session_id: str = None) -> Path:
             f"路径不在允许的工作区内: {p}（允许: {allowed_str}）"
         )
 
-    # 2. 黑名单双保险
+    # 2. 隐藏目录穿越校验：即使白名单命中，.venv/.git/node_modules 等也不可访问
+    if _contains_hidden_dir_component(p):
+        hidden_hit = next((part for part in p.parts if part.lower() in _HIDDEN_DIR_NAMES_LOWER), None)
+        raise ValueError(
+            f"禁止访问隐藏目录/文件: {p}（命中敏感目录: {hidden_hit}）"
+        )
+
+    # 3. 黑名单双保险（系统目录 BLOCKED_DIRS）
     if _is_blocked(p):
         raise ValueError(f"禁止访问系统目录: {p}")
 
@@ -222,7 +244,7 @@ def _validate_path(filepath: str, session_id: str = None) -> Path:
 
 
 def _validate_write_path(filepath: str, session_id: str = None) -> Path:
-    """校验写入路径（允许文件不存在，但路径必须在白名单内）。"""
+    """校验写入路径（允许文件不存在，但路径必须在白名单内且不穿越隐藏目录）。"""
     p = Path(filepath).resolve()
 
     # 1. 白名单校验
@@ -233,7 +255,14 @@ def _validate_write_path(filepath: str, session_id: str = None) -> Path:
             f"路径不在允许的工作区内: {p}（允许: {allowed_str}）"
         )
 
-    # 2. 黑名单双保险
+    # 2. 隐藏目录穿越校验（写入路径也要拦：防止把敏感文件写进 .git 凭据/破坏虚拟环境）
+    if _contains_hidden_dir_component(p):
+        hidden_hit = next((part for part in p.parts if part.lower() in _HIDDEN_DIR_NAMES_LOWER), None)
+        raise ValueError(
+            f"禁止写入隐藏目录/文件: {p}（命中敏感目录: {hidden_hit}）"
+        )
+
+    # 3. 黑名单双保险
     if _is_blocked(p):
         raise ValueError(f"禁止访问系统目录: {p}")
 
