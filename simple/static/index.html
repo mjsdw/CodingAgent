@@ -1,0 +1,1552 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RAG 代码助手 · IDE 模式</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #1e1e1e;
+      --sidebar-bg: #252526;
+      --editor-bg: #1e1e1e;
+      --chat-bg: #252526;
+      --border: #3c3c3c;
+      --text: #cccccc;
+      --text-muted: #858585;
+      --accent: #007acc;
+      --accent-hover: #1f8ad2;
+      --user-bubble: #007acc;
+      --ai-bubble: #2d2d30;
+      --success: #4ec9b0;
+      --warning: #dcdcaa;
+      --error: #f48771;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ---- 顶部栏 ---- */
+    header {
+      background: #2d2d30;
+      border-bottom: 1px solid var(--border);
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-shrink: 0;
+    }
+    header h1 {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text);
+    }
+    header .subtitle {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-left: 8px;
+    }
+    #open-project-btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 5px 14px;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+    #open-project-btn:hover { background: var(--accent-hover); }
+    #open-project-btn:disabled { background: #555; cursor: not-allowed; }
+    #project-path-input {
+      background: #3c3c3c;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 4px 8px;
+      border-radius: 3px;
+      font-size: 12px;
+      font-family: monospace;
+      width: 280px;
+      outline: none;
+    }
+    #project-path-input:focus { border-color: var(--accent); }
+    #project-path-input::placeholder { color: var(--text-muted); }
+    .header-spacer { flex: 1; }
+    #session-info {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: monospace;
+    }
+    #clear-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 4px 10px;
+      font-size: 11px;
+      cursor: pointer;
+      color: var(--text);
+    }
+    #clear-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ---- 三栏主体 ---- */
+    #main-body {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 240px 1fr 360px;
+      overflow: hidden;
+    }
+
+    /* ---- 左：文件树 ---- */
+    #sidebar {
+      background: var(--sidebar-bg);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #sidebar-header {
+      padding: 8px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    #sidebar-header .project-name {
+      color: var(--text);
+      text-transform: none;
+      font-weight: 500;
+      letter-spacing: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 140px;
+    }
+    #tree-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 0;
+      font-size: 13px;
+    }
+    .tree-item {
+      padding: 2px 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      white-space: nowrap;
+      user-select: none;
+      color: var(--text);
+    }
+    .tree-item:hover { background: #2a2d2e; }
+    .tree-item.active { background: #37373d; }
+    .tree-item .tree-icon { width: 14px; text-align: center; opacity: 0.8; }
+    .tree-item .tree-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .tree-children { margin-left: 12px; }
+    .tree-empty {
+      padding: 16px 12px;
+      color: var(--text-muted);
+      font-size: 12px;
+      text-align: center;
+    }
+    /* 滚动条样式 */
+    #tree-container::-webkit-scrollbar, #chat-area::-webkit-scrollbar,
+    #editor-tabs::-webkit-scrollbar { width: 8px; height: 8px; }
+    #tree-container::-webkit-scrollbar-thumb, #chat-area::-webkit-scrollbar-thumb,
+    #editor-tabs::-webkit-scrollbar-thumb { background: #424242; border-radius: 4px; }
+    #tree-container::-webkit-scrollbar-track, #chat-area::-webkit-scrollbar-track,
+    #editor-tabs::-webkit-scrollbar-track { background: transparent; }
+
+    /* ---- 中：编辑器 ---- */
+    #editor-pane {
+      display: flex;
+      flex-direction: column;
+      background: var(--editor-bg);
+      overflow: hidden;
+    }
+    #editor-tabs {
+      display: flex;
+      background: #2d2d30;
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      flex-shrink: 0;
+    }
+    .editor-tab {
+      padding: 6px 14px;
+      font-size: 12px;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-right: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      transition: background 0.15s;
+    }
+    .editor-tab:hover { background: #2a2d2e; }
+    .editor-tab.active {
+      background: var(--editor-bg);
+      color: var(--text);
+      border-bottom: 2px solid var(--accent);
+      margin-bottom: -1px;
+    }
+    .editor-tab .close-btn {
+      font-size: 14px;
+      opacity: 0.6;
+      padding: 0 2px;
+    }
+    .editor-tab .close-btn:hover { opacity: 1; color: var(--error); }
+    #editor-container {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+    #monaco-editor {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+    }
+    #editor-empty {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      font-size: 13px;
+      flex-direction: column;
+      gap: 8px;
+    }
+    #editor-empty .hint { font-size: 11px; opacity: 0.6; }
+
+    /* ---- 右：Chat ---- */
+    #chat-pane {
+      background: var(--chat-bg);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #chat-header {
+      padding: 8px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+    }
+    #chat-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+    }
+    .message { margin-bottom: 12px; display: flex; flex-direction: column; }
+    .message.user { align-items: flex-end; }
+    .message.assistant { align-items: flex-start; }
+    .bubble {
+      max-width: 85%;
+      padding: 10px 14px;
+      border-radius: 10px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 13px;
+    }
+    .message.user .bubble {
+      background: var(--user-bubble);
+      color: white;
+      border-bottom-right-radius: 3px;
+    }
+    .message.assistant .bubble {
+      background: var(--ai-bubble);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: 3px;
+    }
+    .meta { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+    .typing {
+      display: inline-block;
+      padding: 10px 14px;
+      background: var(--ai-bubble);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      border-bottom-left-radius: 3px;
+      color: var(--text-muted);
+      font-style: italic;
+      font-size: 13px;
+    }
+    .typing::after { content: '...'; animation: dots 1.4s infinite; }
+    @keyframes dots {
+      0%, 20% { content: '.'; }
+      40% { content: '..'; }
+      60%, 100% { content: '...'; }
+    }
+    .error { background: #5a1d1d !important; border-color: #7a2d2d !important; }
+
+    #chat-input-area {
+      padding: 8px 12px;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    #input-form {
+      display: flex;
+      gap: 8px;
+    }
+    #question-input {
+      flex: 1;
+      background: #3c3c3c;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 13px;
+      outline: none;
+      font-family: inherit;
+    }
+    #question-input:focus { border-color: var(--accent); }
+    #question-input:disabled { opacity: 0.5; }
+    #submit-btn {
+      padding: 8px 16px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #submit-btn:hover:not(:disabled) { background: var(--accent-hover); }
+    #submit-btn:disabled { background: #555; cursor: not-allowed; }
+
+    /* ---- 状态栏 ---- */
+    #status-bar {
+      background: var(--accent);
+      color: white;
+      padding: 2px 12px;
+      font-size: 11px;
+      display: flex;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    #status-bar .left, #status-bar .right { display: flex; gap: 12px; }
+
+    /* ---- 模态框 ---- */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .modal {
+      background: var(--sidebar-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 20px;
+      width: 460px;
+      max-width: 90vw;
+    }
+    .modal h3 {
+      font-size: 14px;
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+    .modal input[type="text"] {
+      width: 100%;
+      background: #3c3c3c;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-family: monospace;
+      outline: none;
+      margin-bottom: 12px;
+    }
+    .modal input[type="text"]:focus { border-color: var(--accent); }
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+    .modal-btn {
+      padding: 6px 16px;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+    }
+    .modal-btn.primary {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+    }
+    .modal-btn.primary:hover { background: var(--accent-hover); }
+    .modal-btn:hover { border-color: var(--text-muted); }
+
+    /* ---- Diff 预览模态框 ---- */
+    #diff-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.6);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1100;
+    }
+    #diff-overlay.active { display: flex; }
+    #diff-modal {
+      background: var(--sidebar-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      width: 92vw;
+      max-width: 1400px;
+      height: 88vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #diff-header {
+      padding: 10px 16px;
+      background: #2d2d30;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    #diff-title {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #diff-title .pending-badge {
+      background: var(--warning);
+      color: #1e1e1e;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+    #diff-file-tabs {
+      display: flex;
+      gap: 4px;
+      overflow-x: auto;
+      padding: 6px 16px;
+      background: #252526;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .diff-file-tab {
+      padding: 4px 12px;
+      font-size: 12px;
+      background: #3c3c3c;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      cursor: pointer;
+      color: var(--text-muted);
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+    .diff-file-tab:hover { color: var(--text); border-color: var(--text-muted); }
+    .diff-file-tab.active {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+    }
+    .diff-file-tab .action-tag {
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 3px;
+      margin-left: 4px;
+      background: rgba(255,255,255,0.15);
+    }
+    #diff-editor-container {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+    }
+    #diff-editor {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+    }
+    #diff-footer {
+      padding: 12px 16px;
+      background: #2d2d30;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    #diff-hint {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    #diff-actions {
+      display: flex;
+      gap: 10px;
+    }
+    .diff-btn {
+      padding: 8px 22px;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+    .diff-btn:hover:not(:disabled) { border-color: var(--text-muted); }
+    .diff-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .diff-btn.confirm {
+      background: #4ec9b0;
+      color: #1e1e1e;
+      border-color: #4ec9b0;
+    }
+    .diff-btn.confirm:hover:not(:disabled) { background: #5dd9c0; }
+    .diff-btn.cancel {
+      background: #f48771;
+      color: #1e1e1e;
+      border-color: #f48771;
+    }
+    .diff-btn.cancel:hover:not(:disabled) { background: #ff9781; }
+    .diff-loading {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>RAG 代码助手</h1>
+    <span class="subtitle" id="mode-label">IDE 模式</span>
+    <button id="open-project-btn">📁 打开项目</button>
+    <input type="text" id="project-path-input" placeholder="或手动输入项目路径，如 d:/myproject" style="display:none;">
+    <button id="open-path-btn" style="display:none;">打开</button>
+    <div class="header-spacer"></div>
+    <span id="session-info">会话：加载中</span>
+    <button id="clear-btn" title="清空当前会话">🔄 新会话</button>
+  </header>
+
+  <div id="main-body">
+    <!-- 左：文件树 -->
+    <div id="sidebar">
+      <div id="sidebar-header">
+        <span>资源管理器</span>
+        <span class="project-name" id="project-name-display"></span>
+      </div>
+      <div id="tree-container">
+        <div class="tree-empty">点击「打开项目」选择目录</div>
+      </div>
+    </div>
+
+    <!-- 中：编辑器 -->
+    <div id="editor-pane">
+      <div id="editor-tabs"></div>
+      <div id="editor-container">
+        <div id="editor-empty">
+          <div>📂 暂无打开的文件</div>
+          <div class="hint">从左侧文件树点击文件，或让 Agent 修改代码</div>
+        </div>
+        <div id="monaco-editor" style="display:none;"></div>
+      </div>
+    </div>
+
+    <!-- 右：AI Chat -->
+    <div id="chat-pane">
+      <div id="chat-header">AI 助手</div>
+      <div id="chat-area">
+        <div class="message assistant">
+          <div class="bubble">你好！打开项目后，我可以帮你扫描和修改代码。直接提问即可。</div>
+        </div>
+      </div>
+      <div id="chat-input-area">
+        <form id="input-form">
+          <input type="text" id="question-input" placeholder="输入问题，或让 Agent 修改代码..." autocomplete="off" autofocus>
+          <button type="submit" id="submit-btn">发送</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div id="status-bar">
+    <div class="left">
+      <span id="status-project">● 未打开项目</span>
+    </div>
+    <div class="right">
+      <span id="status-lang"></span>
+      <span id="status-encoding">UTF-8</span>
+    </div>
+  </div>
+
+  <!-- Diff 预览模态框 -->
+  <div id="diff-overlay">
+    <div id="diff-modal">
+      <div id="diff-header">
+        <div id="diff-title">
+          <span>🔀 代码修改预览</span>
+          <span class="pending-badge" id="diff-pending-badge">0 个待确认</span>
+        </div>
+        <span style="font-size:11px;color:var(--text-muted);">文件尚未实际写入</span>
+      </div>
+      <div id="diff-file-tabs"></div>
+      <div id="diff-editor-container">
+        <div id="diff-editor"></div>
+        <div class="diff-loading" id="diff-loading">加载编辑器中...</div>
+      </div>
+      <div id="diff-footer">
+        <div id="diff-hint">请检查修改内容，确认后才会真正写入文件</div>
+        <div id="diff-actions">
+          <button class="diff-btn cancel" id="diff-cancel-btn">✗ 撤销并重新输入</button>
+          <button class="diff-btn confirm" id="diff-confirm-btn">✓ 确认修改</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Monaco Editor CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+  <script>
+    const chatArea = document.getElementById('chat-area');
+    const inputForm = document.getElementById('input-form');
+    const questionInput = document.getElementById('question-input');
+    const submitBtn = document.getElementById('submit-btn');
+    const modeLabel = document.getElementById('mode-label');
+    const sessionInfo = document.getElementById('session-info');
+    const clearBtn = document.getElementById('clear-btn');
+    const openProjectBtn = document.getElementById('open-project-btn');
+    const projectPathInput = document.getElementById('project-path-input');
+    const openPathBtn = document.getElementById('open-path-btn');
+    const treeContainer = document.getElementById('tree-container');
+    const projectNameDisplay = document.getElementById('project-name-display');
+    const editorTabs = document.getElementById('editor-tabs');
+    const editorEmpty = document.getElementById('editor-empty');
+    const monacoEditorDiv = document.getElementById('monaco-editor');
+    const statusProject = document.getElementById('status-project');
+    const statusLang = document.getElementById('status-lang');
+    const statusEncoding = document.getElementById('status-encoding');
+
+    // ---- session_id 管理 ----
+    function getSessionId() {
+      let sid = localStorage.getItem('rag_session_id');
+      if (!sid) {
+        sid = 'web-' + Math.random().toString(36).substring(2, 10);
+        localStorage.setItem('rag_session_id', sid);
+      }
+      return sid;
+    }
+    function newSession() {
+      // 若有未确认的 diff 预览，先关闭（不调用 cancel，让旧会话 pending 自然遗留或由后端清理）
+      if (diffOverlay.classList.contains('active')) {
+        closeDiffPreview();
+      }
+      const sid = 'web-' + Math.random().toString(36).substring(2, 10);
+      localStorage.setItem('rag_session_id', sid);
+      currentSessionId = sid;
+      sessionInfo.textContent = `会话：${sid}`;
+      chatArea.innerHTML = `<div class="message assistant"><div class="bubble">已开启新会话。请提问。</div></div>`;
+      // 不清空已打开的项目（项目绑定独立于会话）
+      questionInput.focus();
+    }
+    let currentSessionId = getSessionId();
+    sessionInfo.textContent = `会话：${currentSessionId}`;
+    clearBtn.addEventListener('click', newSession);
+
+    // ---- Monaco Editor 初始化 ----
+    let monacoReady = false;
+    let editor = null;
+    let models = new Map();  // filepath → monaco.editor.ITextModel
+    let openTabs = [];       // [{filepath, name, lang}]
+    let activeTab = null;
+
+    require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } });
+    require(['vs/editor/editor.main'], function () {
+      monacoReady = true;
+      // 定义深色主题（VS Code 风格）
+      monaco.editor.defineTheme('rag-dark', {
+        base: 'vs-dark',
+        inherit: true,
+        rules: [],
+        colors: {
+          'editor.background': '#1e1e1e',
+          'editor.foreground': '#cccccc',
+        }
+      });
+      // 创建编辑器实例
+      editor = monaco.editor.create(monacoEditorDiv, {
+        value: '',
+        language: 'plaintext',
+        theme: 'rag-dark',
+        automaticLayout: true,
+        fontSize: 13,
+        minimap: { enabled: false },
+        scrollBeyondLastLine: false,
+        tabSize: 4,
+      });
+      // Ctrl+S 保存
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, function () {
+        saveCurrentFile();
+      });
+    });
+
+    // 语言映射
+    function getLanguage(filename) {
+      const ext = filename.substring(filename.lastIndexOf('.') + 1).toLowerCase();
+      const map = {
+        py: 'python', js: 'javascript', ts: 'typescript', jsx: 'javascript',
+        tsx: 'typescript', java: 'java', go: 'go', rs: 'rust',
+        c: 'c', cpp: 'cpp', h: 'c', hpp: 'cpp', cs: 'csharp',
+        rb: 'ruby', php: 'php', swift: 'swift', kt: 'kotlin',
+        scala: 'scala', md: 'markdown', json: 'json',
+        yaml: 'yaml', yml: 'yaml', html: 'html', css: 'css',
+        scss: 'scss', less: 'less', sql: 'sql', sh: 'shell',
+        bat: 'bat', xml: 'xml', toml: 'ini', ini: 'ini',
+      };
+      return map[ext] || 'plaintext';
+    }
+
+    // ---- 文件树 ----
+    function renderTree(node, container, depth) {
+      if (!node.children || node.children.length === 0) {
+        if (depth === 0) {
+          container.innerHTML = '<div class="tree-empty">目录为空</div>';
+        }
+        return;
+      }
+      const wrapper = document.createElement('div');
+      wrapper.className = 'tree-children';
+      for (const item of node.children) {
+        const div = document.createElement('div');
+        div.className = 'tree-item';
+        div.dataset.path = item.path;
+        div.dataset.type = item.type;
+
+        if (item.type === 'dir') {
+          div.innerHTML = `<span class="tree-icon">📁</span><span class="tree-name">${item.name}</span>`;
+          div.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const childWrapper = div.nextElementSibling;
+            if (childWrapper && childWrapper.tagName === 'DIV' && childWrapper.classList.contains('tree-children')) {
+              // 已加载，切换显示
+              childWrapper.style.display = childWrapper.style.display === 'none' ? 'block' : 'none';
+              div.querySelector('.tree-icon').textContent = childWrapper.style.display === 'none' ? '📁' : '📂';
+            } else if (item.children === null || (item.expandable && !item._loaded)) {
+              // 懒加载
+              div.querySelector('.tree-icon').textContent = '⏳';
+              const sub = await loadTree(item.path, 1);
+              if (sub && !sub.error) {
+                item.children = sub.children;
+                item._loaded = true;
+                const newWrapper = document.createElement('div');
+                newWrapper.className = 'tree-children';
+                renderTree(sub, newWrapper, depth + 1);
+                div.after(newWrapper);
+                div.querySelector('.tree-icon').textContent = '📂';
+              } else {
+                div.querySelector('.tree-icon').textContent = '📁';
+              }
+            } else {
+              // 已有 children，渲染
+              const newWrapper = document.createElement('div');
+              newWrapper.className = 'tree-children';
+              renderTree({ children: item.children }, newWrapper, depth + 1);
+              div.after(newWrapper);
+              div.querySelector('.tree-icon').textContent = '📂';
+            }
+          });
+          // 如果已有 children（首次加载的深度内），预渲染
+          if (item.children && item.children.length > 0 && depth === 0) {
+            const subWrapper = document.createElement('div');
+            subWrapper.className = 'tree-children';
+            renderTree({ children: item.children }, subWrapper, depth + 1);
+            wrapper.appendChild(div);
+            wrapper.appendChild(subWrapper);
+            continue;
+          }
+          // 已有 children 但还没渲染
+          if (item.children && item.children.length > 0) {
+            div.querySelector('.tree-icon').textContent = '📂';
+          }
+        } else {
+          const sizeStr = item.size < 1024 ? item.size + 'B' : (item.size / 1024).toFixed(1) + 'KB';
+          div.innerHTML = `<span class="tree-icon">📄</span><span class="tree-name">${item.name}</span>`;
+          div.title = `${item.path} (${sizeStr})`;
+          div.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openFile(item.path, item.name);
+          });
+        }
+        wrapper.appendChild(div);
+      }
+      container.appendChild(wrapper);
+    }
+
+    async function loadTree(path, depth) {
+      try {
+        const resp = await fetch(
+          `/api/workspace/tree?session_id=${encodeURIComponent(currentSessionId)}&path=${encodeURIComponent(path)}&depth=${depth || 2}`
+        );
+        if (!resp.ok) return null;
+        return await resp.json();
+      } catch (e) {
+        return null;
+      }
+    }
+
+    // ---- 打开项目 ----
+    async function openProject(projectPath) {
+      if (!projectPath) return;
+      openProjectBtn.disabled = true;
+      openProjectBtn.textContent = '⏳ 打开中...';
+
+      try {
+        const resp = await fetch('/api/workspace/open', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: currentSessionId, project_path: projectPath }),
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+          throw new Error(err.error || '打开失败');
+        }
+        const data = await resp.json();
+        if (data.status === 'error') throw new Error(data.error || '打开失败');
+
+        // 更新状态
+        statusProject.textContent = `● 工作区: ${data.project_name}`;
+        projectNameDisplay.textContent = data.project_name;
+        modeLabel.textContent = `项目: ${data.project_name}`;
+
+        // 加载文件树
+        const tree = await loadTree(data.project_path, 2);
+        if (tree && !tree.error) {
+          treeContainer.innerHTML = '';
+          renderTree(tree, treeContainer, 0);
+        } else {
+          treeContainer.innerHTML = '<div class="tree-empty">扫描失败</div>';
+        }
+      } catch (e) {
+        alert('打开项目失败: ' + e.message);
+        statusProject.textContent = '● 打开失败';
+      } finally {
+        openProjectBtn.disabled = false;
+        openProjectBtn.textContent = '📁 打开项目';
+      }
+    }
+
+    // 打开项目按钮：优先用 File System Access API，否则显示路径输入
+    openProjectBtn.addEventListener('click', async () => {
+      if (window.showDirectoryPicker) {
+        try {
+          const dirHandle = await window.showDirectoryPicker();
+          // 注意：浏览器沙箱限制，dirHandle 不能直接转为绝对路径
+          // 这里用 dirHandle.name 作为项目名，但路径需要用户手动确认
+          const confirmed = confirm(`已选择目录: ${dirHandle.name}\n\n由于浏览器安全限制，需手动输入完整路径。\n点击"确定"打开路径输入框。`);
+          if (confirmed) {
+            showPathInput(dirHandle.name);
+          }
+        } catch (e) {
+          if (e.name !== 'AbortError') showPathInput();
+        }
+      } else {
+        showPathInput();
+      }
+    });
+
+    function showPathInput(suggestedName) {
+      projectPathInput.style.display = '';
+      openPathBtn.style.display = '';
+      projectPathInput.focus();
+      if (suggestedName) {
+        projectPathInput.placeholder = `输入完整路径（如 d:/projects/${suggestedName}）`;
+      }
+    }
+
+    openPathBtn.addEventListener('click', () => {
+      const path = projectPathInput.value.trim();
+      if (path) {
+        openProject(path);
+        projectPathInput.style.display = 'none';
+        openPathBtn.style.display = 'none';
+        projectPathInput.value = '';
+      }
+    });
+    projectPathInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') openPathBtn.click();
+    });
+
+    // ---- 编辑器标签页 + 文件读取/保存 ----
+    async function openFile(filepath, filename) {
+      // 已打开则切换
+      const existing = openTabs.find(t => t.filepath === filepath);
+      if (existing) {
+        switchTab(existing);
+        return;
+      }
+
+      // 读取文件内容
+      try {
+        const resp = await fetch(
+          `/api/workspace/file?session_id=${encodeURIComponent(currentSessionId)}&filepath=${encodeURIComponent(filepath)}`
+        );
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+          throw new Error(err.error || '读取失败');
+        }
+        const data = await resp.json();
+
+        if (!monacoReady || !editor) {
+          alert('编辑器尚未加载完成，请稍后重试');
+          return;
+        }
+
+        const lang = getLanguage(filename);
+        const model = monaco.editor.createModel(data.content, lang);
+        models.set(filepath, model);
+
+        const tab = { filepath, name: filename, lang, model };
+        openTabs.push(tab);
+        renderTabs();
+        switchTab(tab);
+      } catch (e) {
+        alert('打开文件失败: ' + e.message);
+      }
+    }
+
+    function renderTabs() {
+      editorTabs.innerHTML = '';
+      for (const tab of openTabs) {
+        const el = document.createElement('div');
+        el.className = 'editor-tab' + (tab === activeTab ? ' active' : '');
+        el.innerHTML = `<span>${tab.name}</span><span class="close-btn" data-path="${tab.filepath}">×</span>`;
+        el.addEventListener('click', (e) => {
+          if (e.target.classList.contains('close-btn')) {
+            closeTab(tab);
+          } else {
+            switchTab(tab);
+          }
+        });
+        editorTabs.appendChild(el);
+      }
+    }
+
+    function switchTab(tab) {
+      activeTab = tab;
+      if (tab) {
+        editor.setModel(tab.model);
+        monacoEditorDiv.style.display = '';
+        editorEmpty.style.display = 'none';
+        statusLang.textContent = tab.lang;
+        renderTabs();
+      }
+    }
+
+    function closeTab(tab) {
+      const idx = openTabs.indexOf(tab);
+      if (idx === -1) return;
+      openTabs.splice(idx, 1);
+      tab.model.dispose();
+      models.delete(tab.filepath);
+
+      if (activeTab === tab) {
+        if (openTabs.length > 0) {
+          switchTab(openTabs[Math.max(0, idx - 1)]);
+        } else {
+          activeTab = null;
+          editor.setModel(null);
+          monacoEditorDiv.style.display = 'none';
+          editorEmpty.style.display = '';
+          statusLang.textContent = '';
+        }
+      }
+      renderTabs();
+    }
+
+    async function saveCurrentFile() {
+      if (!activeTab) return;
+      const content = activeTab.model.getValue();
+      try {
+        const resp = await fetch('/api/workspace/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: currentSessionId,
+            filepath: activeTab.filepath,
+            content: content,
+          }),
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+          throw new Error(err.error || '保存失败');
+        }
+        const data = await resp.json();
+        if (data.status === 'saved') {
+          statusProject.textContent = `✅ 已保存 ${activeTab.name}（快照ID=${data.snapshot_id}）`;
+          setTimeout(() => {
+            statusProject.textContent = `● 工作区: ${projectNameDisplay.textContent}`;
+          }, 3000);
+        } else {
+          throw new Error(data.error || '保存失败');
+        }
+      } catch (e) {
+        alert('保存失败: ' + e.message);
+      }
+    }
+
+    // ---- Chat 逻辑 ----
+    function appendMessage(role, text) {
+      const msg = document.createElement('div');
+      msg.className = `message ${role}`;
+      const bubble = document.createElement('div');
+      bubble.className = 'bubble';
+
+      // 检测拦截标记 [INTERCEPT:need_project]，渲染特殊 UI
+      if (role === 'assistant' && text.startsWith('[INTERCEPT:need_project]')) {
+        // 去掉标记，提取正文
+        const content = text.replace('[INTERCEPT:need_project]', '').trim();
+        bubble.innerHTML = '';
+
+        // 警告图标 + 标题
+        const title = document.createElement('div');
+        title.style.cssText = 'font-size:14px;font-weight:600;margin-bottom:8px;color:var(--warning,#dcb45a);';
+        title.textContent = '⚠️ 请先打开项目或上传代码文件';
+        bubble.appendChild(title);
+
+        // 正文
+        const desc = document.createElement('div');
+        desc.style.cssText = 'font-size:13px;line-height:1.6;margin-bottom:12px;color:var(--text);';
+        desc.textContent = content.split('\n').filter(l => !l.startsWith('⚠️')).join('\n').trim();
+        bubble.appendChild(desc);
+
+        // 按钮组
+        const btnGroup = document.createElement('div');
+        btnGroup.style.cssText = 'display:flex;gap:10px;';
+
+        const openBtn = document.createElement('button');
+        openBtn.textContent = '📁 打开项目';
+        openBtn.style.cssText = 'padding:6px 16px;border-radius:4px;border:1px solid var(--accent,#4ec9b0);background:var(--accent,#4ec9b0);color:#1e1e1e;cursor:pointer;font-size:13px;font-weight:500;';
+        openBtn.addEventListener('click', () => {
+          openProjectBtn.click();
+        });
+
+        btnGroup.appendChild(openBtn);
+        bubble.appendChild(btnGroup);
+
+        bubble.classList.add('intercept');
+      } else {
+        bubble.textContent = text;
+      }
+
+      msg.appendChild(bubble);
+      chatArea.appendChild(msg);
+      chatArea.scrollTop = chatArea.scrollHeight;
+      return msg;
+    }
+
+    function appendTyping() {
+      const msg = document.createElement('div');
+      msg.className = 'message assistant';
+      msg.id = 'typing-msg';
+      const typing = document.createElement('div');
+      typing.className = 'typing';
+      msg.appendChild(typing);
+      chatArea.appendChild(msg);
+      chatArea.scrollTop = chatArea.scrollHeight;
+    }
+    function removeTyping() {
+      const t = document.getElementById('typing-msg');
+      if (t) t.remove();
+    }
+
+    inputForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const question = questionInput.value.trim();
+      if (!question) return;
+
+      appendMessage('user', question);
+      questionInput.value = '';
+      questionInput.disabled = true;
+      submitBtn.disabled = true;
+      appendTyping();
+
+      // 当前任务控制（用于暂停/继续/取消）
+      let currentTaskId = null;
+      let pollTimer = null;
+
+      try {
+        // 1. 提交任务（异步模式，立即返回 task_id）
+        const resp = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question, session_id: currentSessionId }),
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ error: '请求失败' }));
+          throw new Error(err.error || `HTTP ${resp.status}`);
+        }
+        const data = await resp.json();
+        currentTaskId = data.task_id;
+
+        // 2. 显示任务控制条（暂停/取消按钮）
+        showTaskControls(currentTaskId);
+
+        // 3. 轮询任务状态
+        await new Promise((resolve, reject) => {
+          pollTimer = setInterval(async () => {
+            try {
+              const sresp = await fetch(`/api/task/${currentTaskId}/status`);
+              if (!sresp.ok) return;
+              const sdata = await sresp.json();
+
+              // 更新进度提示
+              updateTypingStep(sdata.step_info || '');
+
+              if (sdata.state === 'done') {
+                clearInterval(pollTimer);
+                resolve(sdata);
+              } else if (sdata.state === 'cancelled') {
+                clearInterval(pollTimer);
+                reject(new Error('任务已取消'));
+              } else if (sdata.state === 'error') {
+                clearInterval(pollTimer);
+                reject(new Error(sdata.error || '执行出错'));
+              }
+              // running / paused 继续轮询
+            } catch (e) {
+              // 网络错误，继续轮询
+            }
+          }, 800);  // 800ms 轮询间隔
+        }).then(async (sdata) => {
+          removeTyping();
+          removeTaskControls();
+          const msg = appendMessage('assistant', sdata.answer || '（无返回）');
+
+          // 检查是否有待确认的 diff 预览
+          await checkPendingModifications();
+
+          // 刷新已打开的文件
+          refreshModifiedFiles(sdata);
+        }).catch((err) => {
+          removeTyping();
+          removeTaskControls();
+          const msg = appendMessage('assistant', `⚠️ ${err.message}`);
+          msg.querySelector('.bubble').classList.add('error');
+        });
+
+      } catch (err) {
+        removeTyping();
+        removeTaskControls();
+        const msg = appendMessage('assistant', `❌ ${err.message}`);
+        msg.querySelector('.bubble').classList.add('error');
+      } finally {
+        questionInput.disabled = false;
+        submitBtn.disabled = false;
+        questionInput.focus();
+      }
+
+      // ====== 任务控制条（暂停/继续/取消） ======
+      function showTaskControls(taskId) {
+        removeTaskControls();  // 先清理旧的
+        const bar = document.createElement('div');
+        bar.id = 'task-controls';
+        bar.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 14px;margin:8px 0;background:var(--surface-2,#252526);border-radius:6px;border:1px solid var(--border,#3c3c3c);font-size:13px;';
+
+        const status = document.createElement('span');
+        status.id = 'task-status-text';
+        status.textContent = '⏳ 思考中...';
+        status.style.cssText = 'flex:1;color:var(--text-secondary,#999);';
+
+        const pauseBtn = document.createElement('button');
+        pauseBtn.id = 'task-pause-btn';
+        pauseBtn.textContent = '⏸ 暂停';
+        pauseBtn.style.cssText = 'padding:4px 12px;border-radius:4px;border:1px solid var(--border,#3c3c3c);background:transparent;color:var(--text);cursor:pointer;font-size:12px;';
+        pauseBtn.addEventListener('click', async () => {
+          try {
+            const r = await fetch(`/api/task/${taskId}/pause`, { method: 'POST' });
+            const d = await r.json();
+            if (d.state === 'paused') {
+              pauseBtn.style.display = 'none';
+              resumeBtn.style.display = '';
+              status.textContent = '⏸ 已暂停';
+            }
+          } catch (e) {}
+        });
+
+        const resumeBtn = document.createElement('button');
+        resumeBtn.id = 'task-resume-btn';
+        resumeBtn.textContent = '▶ 继续';
+        resumeBtn.style.cssText = 'padding:4px 12px;border-radius:4px;border:1px solid var(--accent,#4ec9b0);background:var(--accent,#4ec9b0);color:#1e1e1e;cursor:pointer;font-size:12px;';
+        resumeBtn.style.display = 'none';
+        resumeBtn.addEventListener('click', async () => {
+          try {
+            const r = await fetch(`/api/task/${taskId}/resume`, { method: 'POST' });
+            const d = await r.json();
+            if (d.state === 'running') {
+              resumeBtn.style.display = 'none';
+              pauseBtn.style.display = '';
+              status.textContent = '⏳ 思考中...';
+            }
+          } catch (e) {}
+        });
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.textContent = '✗ 取消';
+        cancelBtn.style.cssText = 'padding:4px 12px;border-radius:4px;border:1px solid var(--danger,#f48771);background:transparent;color:var(--danger,#f48771);cursor:pointer;font-size:12px;';
+        cancelBtn.addEventListener('click', async () => {
+          try {
+            await fetch(`/api/task/${taskId}/cancel`, { method: 'POST' });
+            status.textContent = '🛑 正在取消...';
+            pauseBtn.disabled = true;
+            resumeBtn.disabled = true;
+            cancelBtn.disabled = true;
+          } catch (e) {}
+        });
+
+        bar.appendChild(status);
+        bar.appendChild(pauseBtn);
+        bar.appendChild(resumeBtn);
+        bar.appendChild(cancelBtn);
+
+        // 插入到聊天区
+        chatArea.appendChild(bar);
+        chatArea.scrollTop = chatArea.scrollHeight;
+      }
+
+      function removeTaskControls() {
+        const bar = document.getElementById('task-controls');
+        if (bar) bar.remove();
+      }
+
+      function updateTypingStep(stepInfo) {
+        const status = document.getElementById('task-status-text');
+        if (status && stepInfo) {
+          status.textContent = `⏳ ${stepInfo}`;
+        }
+      }
+    });
+
+    // Agent 修改文件后，刷新已打开的标签页
+    async function refreshModifiedFiles(data) {
+      // 从回答中检测是否包含修改操作（简单实现：检查是否有快照ID）
+      // 如果当前有打开的文件，重新读取内容
+      if (!openTabs.length) return;
+      for (const tab of openTabs) {
+        try {
+          const resp = await fetch(
+            `/api/workspace/file?session_id=${encodeURIComponent(currentSessionId)}&filepath=${encodeURIComponent(tab.filepath)}`
+          );
+          if (resp.ok) {
+            const fileData = await resp.json();
+            const currentContent = tab.model.getValue();
+            if (fileData.content !== currentContent) {
+              // 文件被修改，更新编辑器内容（保留光标位置）
+              const position = editor.getPosition();
+              tab.model.setValue(fileData.content);
+              if (tab === activeTab && position) {
+                editor.setPosition(position);
+              }
+              statusProject.textContent = `🔄 ${tab.name} 已被 Agent 修改`;
+              setTimeout(() => {
+                statusProject.textContent = `● 工作区: ${projectNameDisplay.textContent}`;
+              }, 3000);
+            }
+          }
+        } catch (e) {
+          // 忽略刷新错误
+        }
+      }
+    }
+
+    // ---- Diff 预览：检测 pending 修改并展示 Monaco DiffEditor ----
+    let diffEditor = null;
+    let pendingDiffData = [];      // 当前待确认修改列表
+    let activeDiffIdx = 0;         // 当前展示的 diff 索引
+
+    const diffOverlay = document.getElementById('diff-overlay');
+    const diffFileTabs = document.getElementById('diff-file-tabs');
+    const diffPendingBadge = document.getElementById('diff-pending-badge');
+    const diffEditorDiv = document.getElementById('diff-editor');
+    const diffLoading = document.getElementById('diff-loading');
+    const diffConfirmBtn = document.getElementById('diff-confirm-btn');
+    const diffCancelBtn = document.getElementById('diff-cancel-btn');
+    const diffHint = document.getElementById('diff-hint');
+
+    // 获取文件名（从完整路径）
+    function getFilename(filepath) {
+      const parts = filepath.replace(/\\/g, '/').split('/');
+      return parts[parts.length - 1] || filepath;
+    }
+
+    // 聊天响应后检查是否有待确认修改
+    async function checkPendingModifications() {
+      try {
+        const resp = await fetch(
+          `/api/code/pending?session_id=${encodeURIComponent(currentSessionId)}`
+        );
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (data.count > 0 && data.pending.length > 0) {
+          // 需要从 pending 中提取 old_content/new_content
+          // 但 /api/code/pending 只返回简化信息，需额外拿完整数据
+          // 这里 pending 列表已包含 old_content/new_content（由 preview_edit_impl 暂存）
+          pendingDiffData = data.pending;
+          showDiffPreview();
+        }
+      } catch (e) {
+        // 忽略检查错误
+      }
+    }
+
+    // 显示 Diff 预览模态框
+    function showDiffPreview() {
+      if (!pendingDiffData.length) return;
+      activeDiffIdx = 0;
+
+      // 更新 badge
+      diffPendingBadge.textContent = `${pendingDiffData.length} 个待确认`;
+
+      // 渲染文件 tab
+      renderDiffFileTabs();
+
+      // 显示模态框
+      diffOverlay.classList.add('active');
+      diffLoading.style.display = '';
+
+      // 确保 Monaco 已加载
+      if (!monacoReady) {
+        diffLoading.textContent = '编辑器加载中，请稍候...';
+        const waitTimer = setInterval(() => {
+          if (monacoReady) {
+            clearInterval(waitTimer);
+            createDiffEditor();
+            switchDiffTab(0);
+          }
+        }, 200);
+      } else {
+        createDiffEditor();
+        switchDiffTab(0);
+      }
+
+      // 禁用输入框（等用户确认/撤销后恢复）
+      questionInput.disabled = true;
+      submitBtn.disabled = true;
+    }
+
+    function renderDiffFileTabs() {
+      diffFileTabs.innerHTML = '';
+      pendingDiffData.forEach((mod, idx) => {
+        const tab = document.createElement('div');
+        tab.className = 'diff-file-tab' + (idx === activeDiffIdx ? ' active' : '');
+        const filename = getFilename(mod.filepath);
+        const actionLabel = mod.action === 'write_file'
+          ? (mod.is_new ? '新建' : '覆写')
+          : '修改';
+        tab.innerHTML = `<span>${filename}</span><span class="action-tag">${actionLabel}</span>`;
+        tab.title = mod.filepath;
+        tab.addEventListener('click', () => switchDiffTab(idx));
+        diffFileTabs.appendChild(tab);
+      });
+    }
+
+    function createDiffEditor() {
+      if (diffEditor) return;  // 已创建
+      diffEditor = monaco.editor.createDiffEditor(diffEditorDiv, {
+        theme: 'rag-dark',
+        automaticLayout: true,
+        fontSize: 13,
+        readOnly: true,         // diff 预览只读
+        renderSideBySide: true,  // 并排对比
+        minimap: { enabled: false },
+        scrollBeyondLastLine: false,
+      });
+      diffLoading.style.display = 'none';
+    }
+
+    function switchDiffTab(idx) {
+      if (idx < 0 || idx >= pendingDiffData.length) return;
+      activeDiffIdx = idx;
+      renderDiffFileTabs();
+
+      if (!diffEditor || !monacoReady) return;
+
+      const mod = pendingDiffData[idx];
+      const filename = getFilename(mod.filepath);
+      const lang = getLanguage(filename);
+      const oldContent = mod.old_content || '';
+      const newContent = mod.new_content || '';
+
+      // 创建 original/modified model
+      const originalModel = monaco.editor.createModel(oldContent, lang);
+      const modifiedModel = monaco.editor.createModel(newContent, lang);
+
+      diffEditor.setModel({
+        original: originalModel,
+        modified: modifiedModel,
+      });
+
+      // 更新底部提示
+      const actionText = mod.action === 'write_file'
+        ? (mod.is_new ? '新建文件' : '全量覆写')
+        : '局部修改';
+      diffHint.textContent = `文件: ${filename}（${actionText}）| 修改前 ${oldContent.split('\n').length} 行 → 修改后 ${newContent.split('\n').length} 行`;
+    }
+
+    // 确认修改：调 /api/code/confirm，刷新编辑器
+    diffConfirmBtn.addEventListener('click', async () => {
+      diffConfirmBtn.disabled = true;
+      diffCancelBtn.disabled = true;
+      diffConfirmBtn.textContent = '应用中...';
+
+      try {
+        const resp = await fetch(
+          `/api/code/confirm?session_id=${encodeURIComponent(currentSessionId)}`,
+          { method: 'POST' }
+        );
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+          throw new Error(err.error || '确认失败');
+        }
+        const data = await resp.json();
+
+        // 关闭模态框
+        closeDiffPreview();
+
+        // 刷新被修改的文件标签
+        const modifiedFiles = (data.results || []).filter(r => r.status === 'applied');
+        await refreshModifiedFilesAfterConfirm(modifiedFiles);
+
+        // 提示成功
+        statusProject.textContent = `✅ 已确认 ${data.confirmed_count} 个修改`;
+        appendMessage('assistant', `✅ 已应用 ${data.confirmed_count} 个修改。\n${modifiedFiles.map(r => `  • ${getFilename(r.filepath)}`).join('\n')}\n\n如需撤销，可使用撤销功能恢复到修改前。`);
+        setTimeout(() => {
+          statusProject.textContent = `● 工作区: ${projectNameDisplay.textContent}`;
+        }, 4000);
+      } catch (e) {
+        alert('确认修改失败: ' + e.message);
+      } finally {
+        diffConfirmBtn.disabled = false;
+        diffCancelBtn.disabled = false;
+        diffConfirmBtn.textContent = '✓ 确认修改';
+      }
+    });
+
+    // 撤销修改：调 /api/code/cancel，提示重新输入需求
+    diffCancelBtn.addEventListener('click', async () => {
+      diffConfirmBtn.disabled = true;
+      diffCancelBtn.disabled = true;
+      diffCancelBtn.textContent = '撤销中...';
+
+      try {
+        const resp = await fetch(
+          `/api/code/cancel?session_id=${encodeURIComponent(currentSessionId)}`,
+          { method: 'POST' }
+        );
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+          throw new Error(err.error || '撤销失败');
+        }
+        const data = await resp.json();
+
+        // 关闭模态框
+        closeDiffPreview();
+
+        // 提示用户重新输入需求
+        statusProject.textContent = `↩️ 已撤销 ${data.cancelled_count} 个修改`;
+        appendMessage('assistant', `↩️ 已撤销 ${data.cancelled_count} 个待确认修改，文件未做任何改动。\n\n请重新描述你的需求，我会重新生成修改方案。`);
+        setTimeout(() => {
+          statusProject.textContent = `● 工作区: ${projectNameDisplay.textContent}`;
+        }, 4000);
+
+        // 自动聚焦输入框
+        questionInput.focus();
+      } catch (e) {
+        alert('撤销失败: ' + e.message);
+      } finally {
+        diffConfirmBtn.disabled = false;
+        diffCancelBtn.disabled = false;
+        diffCancelBtn.textContent = '✗ 撤销并重新输入';
+      }
+    });
+
+    function closeDiffPreview() {
+      diffOverlay.classList.remove('active');
+      // 释放 diff editor 的 model 避免内存泄漏
+      if (diffEditor) {
+        const model = diffEditor.getModel();
+        if (model) {
+          if (model.original) model.original.dispose();
+          if (model.modified) model.modified.dispose();
+        }
+        diffEditor.setModel(null);
+      }
+      pendingDiffData = [];
+      // 恢复输入框
+      questionInput.disabled = false;
+      submitBtn.disabled = false;
+      questionInput.focus();
+    }
+
+    // 确认后刷新被修改的文件
+    async function refreshModifiedFilesAfterConfirm(modifiedFiles) {
+      for (const result of modifiedFiles) {
+        const filepath = result.filepath;
+        // 如果文件已在编辑器中打开，刷新内容
+        const tab = openTabs.find(t => t.filepath === filepath);
+        if (tab) {
+          try {
+            const resp = await fetch(
+              `/api/workspace/file?session_id=${encodeURIComponent(currentSessionId)}&filepath=${encodeURIComponent(filepath)}`
+            );
+            if (resp.ok) {
+              const fileData = await resp.json();
+              const position = editor.getPosition();
+              tab.model.setValue(fileData.content);
+              if (tab === activeTab && position) {
+                editor.setPosition(position);
+              }
+            }
+          } catch (e) {
+            // 忽略刷新错误
+          }
+        }
+      }
+    }
+
+    // ---- 页面加载时检查健康状态 ----
+    fetch('/api/health')
+      .then(r => r.json())
+      .then(data => {
+        if (!modeLabel.textContent.includes('项目')) {
+          modeLabel.textContent = `模式: ${data.mode}`;
+        }
+      })
+      .catch(() => {});
+  </script>
+</body>
+</html>

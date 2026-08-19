@@ -1,0 +1,30 @@
+# ========== RAG 智能问答助手依赖 ==========
+# 安装：pip install -r requirements.txt
+
+# ---- LangChain 生态 ----
+langchain>=0.3.0
+langchain-openai>=0.2.0
+langchain-community>=0.3.0
+langchain-core>=0.3.0
+langgraph>=0.2.0
+
+# ---- 向量数据库 ----
+chromadb>=0.5.0
+
+# ---- Embedding 模型 ----
+sentence-transformers>=3.0.0
+
+# ---- 混合检索（BM25）----
+rank-bm25>=0.2.2
+jieba>=0.42.1
+
+# ---- 文档加载 ----
+pypdf>=4.0.0
+python-dotenv>=1.0.0
+
+# ---- Web 服务 ----
+fastapi>=0.115.0
+uvicorn>=0.30.0
+
+# ---- HTTP 请求（weather_search 工具用）----
+requests>=2.32.0

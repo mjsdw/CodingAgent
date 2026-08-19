@@ -1,0 +1,42 @@
+# ===== 敏感信息（含密钥，严禁入库）=====
+.env
+**/.env
+.env.local
+**/.env.local
+
+# ===== Python 虚拟环境 =====
+.venv/
+venv/
+env/
+
+# ===== Python 缓存与编译产物 =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# ===== Chroma 向量库数据（生成产物，可由 build_db.py 重建）=====
+simple/db/
+
+# ===== 运行时数据（记忆/上传/快照，含用户内容）=====
+simple/data/memory.db
+simple/data/workspace/
+
+# ===== IDE =====
+.idea/
+.vscode/
+*.swp
+
+# ===== 操作系统 =====
+.DS_Store
+Thumbs.db
+desktop.ini
+cd D:\python\RAG
+
+# RAG 本地知识库文件，不上传github
+simple/data/*.pdf
+simple/data/*.doc
+simple/data/*.docx
+simple/data/*.pptx
+simple/data/*
+!simple/data/.gitkeep
