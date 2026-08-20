@@ -167,6 +167,11 @@ def grep_code_impl(pattern: str, dirpath: str = "", session_id: str = None) -> s
     if not pattern:
         return "错误：grep_code 缺少 pattern 参数"
 
+    # ReDoS 防护：编译前检查正则安全性
+    is_safe, reason = _check_regex_safe(pattern)
+    if not is_safe:
+        return f"错误：正则表达式不安全 - {reason}（请简化正则或拆分为多个简单模式）"
+
     # 编译正则
     try:
         regex = re.compile(pattern)
@@ -186,6 +191,39 @@ def grep_code_impl(pattern: str, dirpath: str = "", session_id: str = None) -> s
         search_roots = _get_effective_allowed(session_id)
 
     return _grep_search(regex, search_roots)
+
+
+# ReDoS 防护：危险正则特征（嵌套量词 + 重叠量词）
+_RE_DANGEROUS_PATTERNS = [
+    re.compile(r'\(.+[*+?]\)[*+?]'),       # (a+)+  嵌套量词
+    re.compile(r'\(.+\.\*\)[*+?]'),        # (.*)+  嵌套通配
+    re.compile(r'\([^)]+[*+?][^)]*\)[*+]'), # (a+b*)+ 重叠量词
+]
+_GREP_MAX_PATTERN_LEN = 200   # 正则表达式最大长度
+_GREP_MAX_LINE_LEN = 5000     # 单行最大长度（超过跳过正则匹配）
+
+
+def _check_regex_safe(pattern: str) -> tuple[bool, str]:
+    """检查正则表达式是否有 ReDoS 风险。
+
+    :return: (is_safe, reason)  is_safe=False 时 reason 说明原因
+    """
+    if len(pattern) > _GREP_MAX_PATTERN_LEN:
+        return False, f"正则表达式过长（{len(pattern)} > {_GREP_MAX_PATTERN_LEN}）"
+    for dangerous in _RE_DANGEROUS_PATTERNS:
+        if dangerous.search(pattern):
+            return False, f"正则包含危险嵌套量词模式（可能触发 ReDoS）"
+    return True, ""
+
+
+def _safe_regex_search(regex, line: str) -> bool:
+    """安全的正则匹配，带行长度限制防止 ReDoS。
+
+    超长行直接跳过（minified JS、大 JSON 行等不适宜正则逐行匹配）。
+    """
+    if len(line) > _GREP_MAX_LINE_LEN:
+        return False
+    return bool(regex.search(line))
 
 
 def _grep_search(regex, roots: list) -> str:
@@ -222,7 +260,7 @@ def _grep_search(regex, roots: list) -> str:
 
                 file_matches = 0
                 for lineno, line in enumerate(content.splitlines(), start=1):
-                    if regex.search(line):
+                    if _safe_regex_search(regex, line):
                         line_short = line.strip()[:200]
                         matches.append(f"{file_path}:{lineno}: {line_short}")
                         file_matches += 1
