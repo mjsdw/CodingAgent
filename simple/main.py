@@ -34,8 +34,8 @@ def run_cli():
 # 用法：
 #   python main.py          # 启动 CLI 交互（默认）
 #   python main.py --web    # 启动 FastAPI Web 服务
+# 马杰帅哥
 def main():
-    #马杰
     if "--web" in sys.argv:
         # Web 模式
         from app import run_web

@@ -6,9 +6,9 @@
 #   2. 撤销最近一次修改，恢复上一个快照（undo_last）
 #   3. 获取文件修改历史列表（get_history）
 #
-# 快照存储结构：
-#   {CODE_HISTORY_DIR}/{filename}/{序号:03d}.snapshot      # 文件内容快照
-#   {CODE_HISTORY_DIR}/{filename}/{序号:03d}.meta.json     # 元数据
+# 快照存储结构（按会话隔离）：
+#   {CODE_HISTORY_DIR}/{session_id}/{filename}/{序号:03d}.snapshot      # 文件内容快照
+#   {CODE_HISTORY_DIR}/{session_id}/{filename}/{序号:03d}.meta.json     # 元数据
 #
 # 撤销机制：栈式撤销，每次 undo 取最新快照恢复并删除该快照。
 
@@ -22,14 +22,20 @@ from tools.code_tool.path_security import _validate_path
 
 
 def _get_history_dir(filepath: str, session_id: str = None) -> Path:
-    """获取文件对应的历史备份目录。
+    """获取文件对应的历史备份目录（按会话隔离）。
 
-    :param session_id: 会话 ID（当前仅用于兼容签名，历史目录不按会话隔离）
+    存储结构：{CODE_HISTORY_DIR}/{session_id}/{filename}/
+    不同 session 的快照互不干扰，避免跨会话撤销污染。
+
+    :param session_id: 会话 ID（None 时 fallback 到 "default"）
     """
     p = Path(filepath).resolve()
-    # 用文件名（含扩展名）作为子目录名
+    sid = session_id or "default"
+    # 安全化 session_id：只允许字母数字._-，防止路径穿越
+    import re
+    safe_sid = re.sub(r"[^a-zA-Z0-9._-]", "_", sid)
     history_base = Path(CODE_HISTORY_DIR).resolve()
-    file_history = history_base / p.name
+    file_history = history_base / safe_sid / p.name
     file_history.mkdir(parents=True, exist_ok=True)
     return file_history
 
@@ -37,8 +43,8 @@ def _get_history_dir(filepath: str, session_id: str = None) -> Path:
 def _create_snapshot(filepath: str, action_desc: str, session_id: str = None) -> int:
     """修改前创建快照，返回 snapshot_id。
 
-    快照存储在 {CODE_HISTORY_DIR}/{filename}/{序号}.snapshot
-    元数据存储在 {CODE_HISTORY_DIR}/{filename}/{序号}.meta.json
+    快照存储在 {CODE_HISTORY_DIR}/{session_id}/{filename}/{序号}.snapshot
+    元数据存储在 {CODE_HISTORY_DIR}/{session_id}/{filename}/{序号}.meta.json
     """
     p = _validate_path(filepath, session_id)
     history_dir = _get_history_dir(filepath, session_id)
