@@ -16,7 +16,7 @@ import json
 import time
 from pathlib import Path
 
-from config import CODE_HISTORY_DIR
+from config import CODE_HISTORY_DIR, MAX_SNAPSHOTS_PER_FILE
 
 from tools.code_tool.path_security import _validate_path
 
@@ -68,7 +68,29 @@ def _create_snapshot(filepath: str, action_desc: str, session_id: str = None) ->
     meta_path = history_dir / f"{next_id:03d}.meta.json"
     meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    # 超出上限时自动清理最旧快照
+    _cleanup_old_snapshots(history_dir)
+
     return next_id
+
+
+def _cleanup_old_snapshots(history_dir: Path) -> int:
+    """清理超出 MAX_SNAPSHOTS_PER_FILE 的最旧快照。
+
+    :return: 实际删除的快照数量
+    """
+    snapshots = sorted(history_dir.glob("*.snapshot"))
+    deleted = 0
+    while len(snapshots) > MAX_SNAPSHOTS_PER_FILE:
+        oldest = snapshots.pop(0)           # 最旧的快照
+        oldest_id = oldest.stem
+        oldest.unlink()                      # 删除快照内容
+        # 同步删除元数据
+        meta = history_dir / f"{oldest_id}.meta.json"
+        if meta.exists():
+            meta.unlink()
+        deleted += 1
+    return deleted
 
 
 def undo_last(filepath: str, session_id: str = None) -> dict:

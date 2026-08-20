@@ -104,6 +104,8 @@ MEMORY_MAX_MESSAGES = 20
 ENABLE_CODE_AGENT = True
 # 代码修改历史备份目录（每次 edit/write 前自动创建快照，支持撤销）
 CODE_HISTORY_DIR = "./data/workspace/history"
+# 单文件最大快照数量（超出后自动删除最旧快照，防止磁盘无限增长）
+MAX_SNAPSHOTS_PER_FILE = 20
 # LangGraph Plan-and-Execute 最大执行步数（防死循环）
 # 含重试和重规划消耗的步数；重规划后 total_steps 会重置，给新计划完整额度
 MAX_CODE_ROUNDS = 15

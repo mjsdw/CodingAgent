@@ -74,7 +74,29 @@ def edit_file_impl(filepath: str, old_string: str, new_string: str, session_id: 
     # 校验唯一性
     count = content.count(old_string)
     if count > 1:
-        return f"错误：old_string 在文件中出现 {count} 次，请提供更长的上下文使其唯一"
+        # 返回所有匹配位置（行号+上下文），帮助 LLM 精确定位
+        lines = content.splitlines()
+        locations = []
+        search_start = 0
+        for _ in range(min(count, 5)):  # 最多返回 5 处，防止输出过长
+            pos = content.find(old_string, search_start)
+            if pos == -1:
+                break
+            # 通过累计字符数定位行号
+            lineno = content[:pos].count('\n') + 1
+            # 提取该行上下文（前一行 + 当前行 + 后一行）
+            ctx_lines = []
+            for offset in (-1, 0, 1):
+                idx = lineno - 1 + offset
+                if 0 <= idx < len(lines):
+                    prefix = "  >" if offset == 0 else "   "
+                    ctx_lines.append(f"{prefix} {idx + 1}: {lines[idx][:120]}")
+            locations.append(f"  位置 {len(locations) + 1}（第 {lineno} 行）:\n" + "\n".join(ctx_lines))
+            search_start = pos + len(old_string)
+        hint = "\n".join(locations)
+        if count > 5:
+            hint += f"\n  ...（共 {count} 处匹配，仅显示前 5 处）"
+        return f"错误：old_string 在文件中出现 {count} 次，请提供更长的上下文使其唯一。\n匹配位置：\n{hint}"
 
     # 创建快照
     snapshot_id = _create_snapshot(filepath, f"edit: 替换片段", session_id=session_id)
