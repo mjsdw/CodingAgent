@@ -265,12 +265,17 @@ def _get_effective_allowed(session_id: str = None) -> list[Path]:
 def _is_within_allowed(path: Path, session_id: str = None) -> bool:
     """判断路径是否在任一白名单目录内（含其自身）。
 
+    Windows 下 Path 的 == 和 parents 区分大小写（D:\\Temp vs d:\\temp），
+    因此统一转小写字符串比较，确保大小写无关。
+
     :param path: 待校验路径（已 resolve）
     :param session_id: 会话 ID，传入时合并会话级动态白名单
     """
+    path_lower = str(path).lower()
     for allowed in _get_effective_allowed(session_id):
+        allowed_lower = str(allowed).lower()
         # path == allowed（自身）或 allowed 是 path 的父目录
-        if path == allowed or allowed in path.parents:
+        if path_lower == allowed_lower or path_lower.startswith(allowed_lower.rstrip("\\/") + "\\"):
             return True
     return False
 
