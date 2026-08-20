@@ -13,8 +13,10 @@
 # --- 路径安全 / 白名单 ---
 from tools.code_tool.path_security import (
     add_session_workspace,
+    add_session_open_file,
     remove_session_workspace,
     get_session_workspaces,
+    get_session_open_files,
     has_session_files,
     # 以下为内部函数，导出供其他子模块 / 测试使用
     _validate_path,
@@ -62,8 +64,10 @@ from tools.code_tool.code_tools import (
 __all__ = [
     # 路径安全 / 白名单
     "add_session_workspace",
+    "add_session_open_file",
     "remove_session_workspace",
     "get_session_workspaces",
+    "get_session_open_files",
     "has_session_files",
     # 快照 / 撤销 / 历史
     "undo_last",

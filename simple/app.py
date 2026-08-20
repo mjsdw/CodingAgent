@@ -34,7 +34,8 @@ from config import (
 from orchestrator import Orchestrator
 from tools.code_tool import (
     undo_last, get_history,
-    add_session_workspace, remove_session_workspace, get_session_workspaces,
+    add_session_workspace, add_session_open_file,
+    remove_session_workspace, get_session_workspaces, get_session_open_files,
     list_tree_impl, read_workspace_file_impl, save_workspace_file_impl,
     get_pending_modifications, confirm_modifications, cancel_modifications,
 )
@@ -143,6 +144,21 @@ class WorkspaceOpenResponse(BaseModel):
     project_name: str                 # 项目目录名
     status: str                       # "opened" / "already_open" / "error"
     current_projects: list[str]       # 当前会话已打开的所有项目路径
+
+
+class WorkspaceOpenFileRequest(BaseModel):
+    """打开单个文件请求体（前端 Monaco 打开独立文件时使用）。"""
+    session_id: str
+    file_path: str                    # 单个文件的绝对路径
+
+
+class WorkspaceOpenFileResponse(BaseModel):
+    """打开单个文件响应体。"""
+    session_id: str
+    file_path: str                    # 规范化后的文件绝对路径
+    file_name: str                    # 文件名（含扩展名）
+    parent_dir: str                   # 同时加入白名单的父目录路径
+    status: str                       # "opened" / "already_open" / "error"
 
 
 class WorkspaceTreeResponse(BaseModel):
@@ -738,6 +754,48 @@ async def workspace_open(req: WorkspaceOpenRequest):
         )
 
 
+@app.post("/api/workspace/open-file", response_model=WorkspaceOpenFileResponse)
+async def workspace_open_file(req: WorkspaceOpenFileRequest):
+    """前端打开**单个文件**（非整个项目目录）时调用，把文件 + 父目录加入会话白名单。
+
+    适用场景：
+      - 用户在前端通过 Monaco 的"打开文件"按钮选择了单个本地文件
+      - 文件不在已打开的任何 workspace 项目目录内
+      - 本接口会自动把文件所在父目录也注册到项目白名单（让 grep_code/list_dir 也能扫描父目录）
+      - 同时把文件单独记录在「前端独立打开文件表」（Planner 生成计划时会优先列出这些文件路径）
+
+    使用方式：
+        POST /api/workspace/open-file
+        Body: {"session_id": "web-abc123", "file_path": "D:/temp/bug_demo.py"}
+
+    返回：
+        - status="opened"        → 新注册成功
+        - status="already_open"  → 该文件已注册过（幂等）
+    """
+    if not ENABLE_CODE_AGENT:
+        return JSONResponse(
+            {"error": "代码模块未启用（ENABLE_CODE_AGENT=False）"},
+            status_code=403,
+        )
+
+    try:
+        before = [str(p) for p in get_session_open_files(req.session_id)]
+        p = add_session_open_file(req.session_id, req.file_path)
+        after = [str(x) for x in get_session_open_files(req.session_id)]
+        status = "already_open" if str(p) in before else "opened"
+        return WorkspaceOpenFileResponse(
+            session_id=req.session_id,
+            file_path=str(p),
+            file_name=p.name,
+            parent_dir=str(p.parent),
+            status=status,
+        )
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    except Exception as e:
+        return JSONResponse({"error": f"打开文件失败: {e}"}, status_code=500)
+
+
 @app.get("/api/workspace/tree")
 async def workspace_tree(
     session_id: str = Query(..., description="会话 ID"),
@@ -829,12 +887,19 @@ async def workspace_save(req: WorkspaceSaveRequest):
 
 @app.get("/api/workspace/status")
 async def workspace_status(session_id: str = Query(..., description="会话 ID")):
-    """查询当前会话已打开的项目列表。
+    """查询当前会话已打开的项目 + 独立打开文件列表。
 
     使用方式：
         GET /api/workspace/status?session_id=web-abc123
 
-    返回：{session_id, projects: [{name, path}, ...], count}
+    返回：
+      {
+        session_id,
+        projects:        [{name, path}, ...],   # 已打开的项目目录
+        count_projects:  int,                   # 项目数量
+        open_files:      [{name, path}, ...],   # 前端独立打开的文件（★ 单文件场景使用）
+        count_open_files:int,                   # 独立文件数量
+      }
     """
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
@@ -843,10 +908,13 @@ async def workspace_status(session_id: str = Query(..., description="会话 ID")
         )
 
     workspaces = get_session_workspaces(session_id)
+    open_files = get_session_open_files(session_id)
     return {
         "session_id": session_id,
         "projects": [{"name": p.name, "path": str(p)} for p in workspaces],
-        "count": len(workspaces),
+        "count_projects": len(workspaces),
+        "open_files": [{"name": p.name, "path": str(p)} for p in open_files],
+        "count_open_files": len(open_files),
     }
 
 

@@ -56,6 +56,10 @@ _BUILTIN_ALLOWED_PATHS: list[Path] = [
 # 内存维护，进程重启清空（如需持久化可后续接入 SQLite）
 _SESSION_WORKSPACES: dict[str, list[Path]] = {}
 
+# 会话级独立打开文件表（前端打开单个文件、不在已打开项目目录内时使用）
+# 结构：{session_id: [Path(文件1), Path(文件2), ...]}
+_SESSION_OPEN_FILES: dict[str, list[Path]] = {}
+
 
 def add_session_workspace(session_id: str, project_path: str) -> Path:
     """打开项目时调用，把项目根路径加入会话级白名单。
@@ -108,24 +112,98 @@ def add_session_workspace(session_id: str, project_path: str) -> Path:
     return p
 
 
+def add_session_open_file(session_id: str, file_path: str) -> Path:
+    """前端打开独立文件时调用，把文件 + 所在目录加入白名单。
+
+    与 add_session_workspace 的差异：
+    - 接受文件路径（不要求是目录）
+    - 自动把文件父目录也加入 _SESSION_WORKSPACES（让 list_dir/grep_code 也能扫描到）
+    - 同时记录到 _SESSION_OPEN_FILES（标记为"用户直接打开的文件"，Planner 优先推荐）
+
+    :param session_id: 会话 ID
+    :param file_path: 单个文件的绝对路径
+    :return: 规范化后的 Path 对象
+    :raises ValueError: 路径不存在、不是文件、命中隐藏目录/黑名单、前缀不允许或超限
+    """
+    if not session_id:
+        raise ValueError("session_id 不能为空")
+
+    p = Path(file_path).resolve()
+
+    # 1. 必须存在且是文件
+    if not p.exists():
+        raise ValueError(f"文件不存在: {p}")
+    if not p.is_file():
+        raise ValueError(f"路径不是文件: {p}")
+
+    # 2. 黑名单校验（系统目录禁止，复用 _is_blocked）
+    if _is_blocked(p):
+        raise ValueError(f"禁止访问系统目录: {p}")
+
+    # 3. 隐藏目录穿越校验（复用 _contains_hidden_dir_component）
+    if _contains_hidden_dir_component(p):
+        hidden_hit = next(
+            (part for part in p.parts if part.lower() in _HIDDEN_DIR_NAMES_LOWER),
+            None,
+        )
+        raise ValueError(
+            f"禁止访问隐藏目录/文件: {p}（命中敏感目录: {hidden_hit}）"
+        )
+
+    # 4. 根目录前缀限制（复用 WORKSPACE_ALLOWED_ROOTS）
+    if WORKSPACE_ALLOWED_ROOTS:
+        allowed_prefix = any(
+            str(p).lower().startswith(root.lower())
+            for root in WORKSPACE_ALLOWED_ROOTS
+        )
+        if not allowed_prefix:
+            raise ValueError(
+                f"文件路径不在允许的根目录前缀内: {p}（允许前缀: {WORKSPACE_ALLOWED_ROOTS}）"
+            )
+
+    # 5. 把文件所在目录加入目录白名单（让 grep_code/list_dir 可用，超限忽略）
+    parent_dir = p.parent
+    try:
+        add_session_workspace(session_id, str(parent_dir))
+    except ValueError:
+        # 目录已存在或超限，不影响文件本身的注册
+        pass
+
+    # 6. 独立文件去重记录
+    current_files = _SESSION_OPEN_FILES.setdefault(session_id, [])
+    if p in current_files:
+        return p  # 已存在，幂等返回
+
+    # 7. 文件数量限制（复用 WORKSPACE_MAX_PROJECTS）
+    if len(current_files) >= WORKSPACE_MAX_PROJECTS:
+        raise ValueError(
+            f"会话已打开 {len(current_files)} 个独立文件，达到上限 {WORKSPACE_MAX_PROJECTS}"
+        )
+
+    current_files.append(p)
+    return p
+
+
 def remove_session_workspace(session_id: str, project_path: str = None) -> int:
     """关闭项目时调用，移除会话级白名单。
 
     :param session_id: 会话 ID
     :param project_path: 指定关闭的项目路径；为空时关闭该会话所有项目
-    :return: 移除的项目数
+    :return: 移除的项目数（含独立打开文件数）
     """
-    if session_id not in _SESSION_WORKSPACES:
+    if session_id not in _SESSION_WORKSPACES and session_id not in _SESSION_OPEN_FILES:
         return 0
 
     if project_path is None:
-        # 关闭该会话所有项目
-        count = len(_SESSION_WORKSPACES[session_id])
-        del _SESSION_WORKSPACES[session_id]
+        # 关闭该会话所有项目 + 同步清空独立打开文件表
+        count = len(_SESSION_WORKSPACES.get(session_id, []))
+        count += len(_SESSION_OPEN_FILES.pop(session_id, []))
+        if session_id in _SESSION_WORKSPACES:
+            del _SESSION_WORKSPACES[session_id]
         return count
 
     p = Path(project_path).resolve()
-    current = _SESSION_WORKSPACES[session_id]
+    current = _SESSION_WORKSPACES.get(session_id, [])
     before = len(current)
     _SESSION_WORKSPACES[session_id] = [x for x in current if x != p]
     return before - len(_SESSION_WORKSPACES[session_id])
@@ -136,8 +214,13 @@ def get_session_workspaces(session_id: str) -> list[Path]:
     return list(_SESSION_WORKSPACES.get(session_id, []))
 
 
+def get_session_open_files(session_id: str) -> list[Path]:
+    """获取指定会话中，前端单独打开的文件列表（用于 Planner 优先提示）。"""
+    return list(_SESSION_OPEN_FILES.get(session_id, []))
+
+
 def has_session_files(session_id: str) -> bool:
-    """检查会话是否有可访问的代码文件（打开的项目或上传的文件）。
+    """检查会话是否有可访问的代码文件（打开的项目或独立文件或上传的文件）。
 
     用于 Router 层拦截：若用户未打开项目且未上传文件，代码类问题直接拦截，
     避免无效调用 CodeGenSkill 的多轮 LLM。
@@ -150,7 +233,10 @@ def has_session_files(session_id: str) -> bool:
     # 1. 检查已打开的项目
     if get_session_workspaces(session_id):
         return True
-    # 2. 检查上传的文件
+    # 2. 检查独立打开的文件（★ 新增：前端单文件打开也算"有文件"）
+    if get_session_open_files(session_id):
+        return True
+    # 3. 检查上传的文件
     safe_sid = re.sub(r"[^a-zA-Z0-9._-]", "_", session_id)
     session_dir = Path(UPLOAD_DIR).resolve() / safe_sid
     if session_dir.exists():
@@ -162,7 +248,7 @@ def has_session_files(session_id: str) -> bool:
 
 
 def _get_effective_allowed(session_id: str = None) -> list[Path]:
-    """获取生效的白名单 = 内置 + 静态 + 会话动态。
+    """获取生效的白名单 = 内置 + 静态 + 会话动态（含目录 + 独立文件）。
 
     :param session_id: 会话 ID（为空则只返回内置+静态白名单）
     :return: 合并后的白名单 Path 列表
@@ -171,6 +257,8 @@ def _get_effective_allowed(session_id: str = None) -> list[Path]:
     allowed.extend(_ALLOWED_PATHS)          # 静态配置白名单
     if session_id:
         allowed.extend(_SESSION_WORKSPACES.get(session_id, []))
+        # ★ 新增：把独立打开的文件也加入白名单（_is_within_allowed 用 path == allowed 命中自身）
+        allowed.extend(_SESSION_OPEN_FILES.get(session_id, []))
     return allowed
 
 

@@ -92,8 +92,10 @@ QUERY_REWRITE_PROMPT = """任务：将用户口语化问题改写为检索友好
 
 # ========== 1. 计划生成 Prompt ==========
 # LLM 看到用户需求，生成结构化执行计划
-# 占位符：{question} / {max_steps}
+# 占位符：{available_paths} / {question} / {max_steps}
 PLAN_PROMPT = """任务：分析用户需求，制定分步执行计划。
+
+{available_paths}
 
 需求：{question}
 
@@ -162,6 +164,7 @@ list_dir / grep_code 使用建议：
 }}
 
 规划规则：
+- ★★ 最优先规则：先阅读上方的【当前会话可用路径清单】。如果用户提到的文件名/路径在清单中直接出现，必须直接使用清单中给出的**完整绝对路径**，严禁把文件名拼接到错误的 workspace 根目录下。
 - 首步通常是 read_file 了解当前代码结构
 - 分析类任务：read_file 之后必须安排 analyze 步骤，不能直接 finish
 - 修改类任务：edit_file 前必须先 read_file 同一文件（executor 执行 edit_file 时会基于已读内容动态生成 old_string/new_string）
@@ -169,7 +172,7 @@ list_dir / grep_code 使用建议：
 - 严禁在规划阶段填写 edit_file 的 old_string/new_string 具体值（因为还没读过文件，填了也是错的）
 - 严禁在规划阶段填写 write_file 的 content 具体值（同上）
 - 最多 {max_steps} 个步骤，超出时应在最后用 finish 收尾
-- filepath/dirpath 必须使用绝对路径
+- filepath/dirpath 必须使用绝对路径，且必须在【当前会话可用路径清单】范围内
 - 严禁规划与用户需求无关的操作
 - 如需操作多个文件，按文件分组安排步骤
 """
@@ -234,8 +237,10 @@ GENERATE_WRITE_PROMPT = """任务：基于修改意图，生成要写入文件�
 
 # ========== 2. 重规划 Prompt ==========
 # 反思失败后，带反馈重新生成计划
-# 占位符：{question} / {max_steps} / {executed_steps} / {reflections}
+# 占位符：{available_paths} / {question} / {max_steps} / {executed_steps} / {reflections}
 REPLAN_PROMPT = """任务：之前的执行计划遇到问题，根据反思反馈重新制定计划。
+
+{available_paths}
 
 用户需求：{question}
 
@@ -270,12 +275,14 @@ REPLAN_PROMPT = """任务：之前的执行计划遇到问题，根据反思反�
 }}
 
 规则：
+- ★★ 最优先规则：先阅读上方的【当前会话可用路径清单】。如果用户提到的文件名/路径在清单中直接出现，必须直接使用清单中给出的完整绝对路径，严禁把文件名拼到错误的 workspace 根目录下。
 - 不要重复已成功的步骤
 - 基于反思反馈调整策略
 - edit_file 前必须先 read_file 同一文件
 - 严禁在规划阶段填写 edit_file 的 old_string/new_string 具体值（留空，executor 动态生成）
 - 严禁在规划阶段填写 write_file 的 content 具体值（留空，executor 动态生成）
 - 最多 {max_steps} 个步骤
+- filepath/dirpath 必须使用绝对路径，且必须在【当前会话可用路径清单】范围内
 """
 
 

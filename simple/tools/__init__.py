@@ -33,7 +33,8 @@ from tools.web_search import web_search, web_search_docs
 from tools.code_tool import (
     undo_last, get_history,
     # 工作区相关
-    add_session_workspace, remove_session_workspace, get_session_workspaces,
+    add_session_workspace, add_session_open_file,
+    remove_session_workspace, get_session_workspaces, get_session_open_files,
     has_session_files,
     list_tree_impl, read_workspace_file_impl, save_workspace_file_impl,
     # 代码读写 - 仅导出带 session_id 的 *_impl 裸函数版本
@@ -56,8 +57,10 @@ __all__ = [
     "get_history",
     # 工作区相关
     "add_session_workspace",
+    "add_session_open_file",
     "remove_session_workspace",
     "get_session_workspaces",
+    "get_session_open_files",
     "has_session_files",
     "list_tree_impl",
     "read_workspace_file_impl",

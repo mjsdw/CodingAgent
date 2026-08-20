@@ -78,7 +78,7 @@ WEB_FETCH_TIMEOUT = 8
 WEB_CONTENT_MAX_CHARS = 800
 
 # ---------------------- LLM 配置 ----------------------
-LLM_MODEL = "qwen3.7-max"
+LLM_MODEL = "deepseek-v4-flash-0731"
 LLM_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 LLM_TEMPERATURE = 0.0
 

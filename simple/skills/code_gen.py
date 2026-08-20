@@ -44,6 +44,9 @@ from tools.code_tool import (
     preview_edit_impl,
     preview_write_impl,
     get_pending_modifications,
+    # 会话工作区/文件查询（给 Planner 注入路径清单）
+    get_session_workspaces,
+    get_session_open_files,
 )
 
 from prompts import (
@@ -153,6 +156,68 @@ def _format_plan_progress(plan: list[dict], current_idx: int, executed: list[dic
     total = len(plan)
     done = len(executed)
     return f"计划共 {total} 步，已执行 {done} 步，当前第 {current_idx + 1} 步"
+
+
+def _build_available_paths_text(session_id: str) -> str:
+    """构造当前会话可操作的路径清单，注入 PLAN_PROMPT / REPLAN_PROMPT。
+
+    清单分三部分，优先级从高到低：
+      1. 前端独立打开的文件（用户正在编辑，★ 标记，优先提示）
+      2. 已打开的项目目录（可操作其中所有文件）
+      3. 已上传的文件（在会话 upload 目录下）
+
+    :return: 格式化后的多行文本，直接作为 {available_paths} 注入 Prompt
+    """
+    if not session_id:
+        return "【当前会话可用路径清单】\n  （无会话上下文，无可用路径）"
+
+    lines = ["【当前会话可用路径清单 — 所有步骤的 filepath/dirpath 必须从以下路径中选择绝对路径】"]
+
+    # ---------- 1. ★ 前端独立打开的文件（优先） ----------
+    open_files = get_session_open_files(session_id)
+    if open_files:
+        lines.append("\n★ 前端已打开的独立文件（用户正在编辑器中查看，read_file 请优先选择这些完整路径）：")
+        for i, fp in enumerate(open_files, 1):
+            lines.append(f"  {i}. {fp}")
+    else:
+        lines.append("\n前端已打开的独立文件：（无）")
+
+    # ---------- 2. 已打开的项目目录 ----------
+    workspaces = get_session_workspaces(session_id)
+    if workspaces:
+        lines.append("\n已打开的项目目录（可操作其中所有非隐藏文件/子目录）：")
+        for i, ws in enumerate(workspaces, 1):
+            lines.append(f"  {i}. {ws}（项目名: {ws.name}）")
+    else:
+        lines.append("\n已打开的项目目录：（无）")
+
+    # ---------- 3. 已上传的文件 ----------
+    from config import UPLOAD_DIR
+    import re as _re
+    from pathlib import Path as _Path
+
+    safe_sid = _re.sub(r"[^a-zA-Z0-9._-]", "_", session_id)
+    session_dir = _Path(UPLOAD_DIR).resolve() / safe_sid
+    uploads: list[_Path] = []
+    if session_dir.exists():
+        try:
+            uploads = sorted(
+                [f.resolve() for f in session_dir.iterdir() if f.is_file()],
+                key=lambda p: p.name.lower(),
+            )
+        except Exception:
+            pass
+    if uploads:
+        lines.append("\n已上传的文件（位于本会话上传目录）：")
+        for i, fp in enumerate(uploads, 1):
+            lines.append(f"  {i}. {fp}")
+
+    lines.append(
+        "\n★★ 规划规则：若用户提到的文件名在上表中直接存在（含所在目录），必须使用表中的完整绝对路径，"
+        "不要把文件名拼接到错误的 workspace 根目录下！"
+    )
+
+    return "\n".join(lines)
 
 
 # ===================== 修改参数动态生成 =====================
@@ -456,14 +521,22 @@ def planner_node(state: CodeState) -> CodeState:
     """计划节点：调 LLM 生成完整执行计划。
 
     首次调用用 PLAN_PROMPT，重规划时用 REPLAN_PROMPT（带反馈）。
+    注入 {available_paths}：当前会话已打开项目 + 独立打开文件 + 上传文件清单，
+    让 LLM 优先使用已给出的真实绝对路径，防止"文件名拼到错误 workspace 根"。
     """
     question = state["question"]
     history = state.get("history", [])
     is_replan = state.get("plan_revision_count", 0) > 0
+    session_id = state.get("session_id", "")
+
+    # ★ 生成当前可用路径清单，注入 Prompt
+    available_paths_text = _build_available_paths_text(session_id)
+    print(f"🗂️  [CodeGen] Planner 注入可用路径清单（{len(available_paths_text)} 字，session={session_id}）")
 
     if is_replan:
         # 重规划：带已执行步骤和反思反馈
         prompt = REPLAN_PROMPT.format(
+            available_paths=available_paths_text,
             question=question,
             max_steps=MAX_CODE_ROUNDS,
             executed_steps=_format_executed_steps(state.get("executed_steps", [])),
@@ -473,6 +546,7 @@ def planner_node(state: CodeState) -> CodeState:
     else:
         # 初始规划
         prompt = PLAN_PROMPT.format(
+            available_paths=available_paths_text,
             question=question,
             max_steps=MAX_CODE_ROUNDS,
         )

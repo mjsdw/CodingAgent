@@ -25,6 +25,7 @@ from config import ENABLE_CODE_AGENT
 from skills.base import BaseSkill, SkillContext
 from skills.chitchat import ChitchatSkill
 from skills.code_gen import CodeGenSkill
+from skills.weather import WeatherSkill
 
 
 # ===================== 规则定义 =====================
@@ -39,8 +40,12 @@ _CHITCHAT_PATTERNS = [
     r'^\s*(早上好|下午好|晚上好|早安|晚安)\s*[!！。.]*\s*$',
 ]
 
-# 天气关键词（待 WeatherSkill 实现后启用）
-_WEATHER_KEYWORDS = ["天气", "下雨", "气温", "几度", "温度多少", "穿什么衣服"]
+# 天气关键词（命中即路由到 WeatherSkill，零 LLM 开销）
+_WEATHER_KEYWORDS = [
+    "天气", "下雨", "气温", "温度", "几度", "穿什么衣服",
+    "湿度", "风速", "刮风", "晴", "阴", "雨", "雷", "雪", "雾", "霾",
+    "热不热", "冷不冷", "穿什么", "降温", "升温", "气候",
+]
 
 # 代码修改/生成关键词（命中即路由到 CodeGenSkill）
 # 覆盖场景：明确的代码修改、Bug 修复、函数实现、文件操作等
@@ -83,11 +88,10 @@ class RuleRouter:
             if re.match(pattern, q, flags=re.IGNORECASE):
                 return ChitchatSkill()
 
-        # 2. 天气：包含天气关键词
-        # （待 WeatherSkill 实现后取消注释）
-        # for kw in _WEATHER_KEYWORDS:
-        #     if kw in q:
-        #         return WeatherSkill()
+        # 2. 天气：包含天气关键词 → WeatherSkill（零 LLM 开销秒级命中）
+        for kw in _WEATHER_KEYWORDS:
+            if kw in q:
+                return WeatherSkill()
 
         # 3. 代码生成/修改：匹配明确的代码操作关键词
         # ENABLE_CODE_AGENT=False 时跳过，交给 LLM Router

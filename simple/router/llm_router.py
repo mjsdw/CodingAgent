@@ -26,6 +26,7 @@ from skills.base import BaseSkill, SkillContext
 from skills.chitchat import ChitchatSkill
 from skills.kb_search import KBSearchSkill
 from skills.code_gen import CodeGenSkill
+from skills.weather import WeatherSkill
 
 
 # ===================== LLM 路由 Prompt =====================
@@ -33,18 +34,20 @@ from skills.code_gen import CodeGenSkill
 _ROUTER_PROMPT = """任务：判断用户问题应该用哪个技能处理，输出 JSON。
 
 可选技能：
+- weather：天气查询，适合询问某城市实时天气、温度、是否下雨、湿度、穿衣建议等天气类问题
 - chitchat：闲聊/问候/通用常识/你是谁等无关知识库的问题
 - kb_search：知识库检索，适合技术问题、概念查询、对比分析等所有需要检索知识库的问题
 - code_gen：代码生成/修改技能，读取/修改/创建本地代码文件，适合"修改 xx 函数"、"修复 bug"、"写一个 xx 函数"等代码操作类问题
 
 判断规则：
-1. 纯闲聊、问候、自我认知 → chitchat
-2. 明确的代码操作（修改/读取/创建代码文件、修复 bug、实现函数） → code_gen
-3. 需要检索知识库的问题（技术/概念/对比/分析） → kb_search
-4. 模糊问题时默认选 kb_search（最稳兜底）
+1. 任何与天气/气温/下雨/穿衣相关的问题 → weather（优先级最高，哪怕同时有其他词汇）
+2. 纯闲聊、问候、自我认知 → chitchat
+3. 明确的代码操作（修改/读取/创建代码文件、修复 bug、实现函数） → code_gen
+4. 需要检索知识库的问题（技术/概念/对比/分析） → kb_search
+5. 模糊问题时默认选 kb_search（最稳兜底）
 
 严格只输出 JSON，不要任何多余解释：
-{{"skill": "chitchat|kb_search|code_gen", "reason": "简要理由"}}
+{{"skill": "weather|chitchat|kb_search|code_gen", "reason": "简要理由"}}
 
 用户问题：{question}
 """
@@ -55,6 +58,7 @@ _ROUTER_PROMPT = """任务：判断用户问题应该用哪个技能处理，输
 # 新增 Skill 时只需在此表加一行（与 skills/__init__.py 的导出保持一致）
 
 _SKILL_MAP: dict[str, type[BaseSkill]] = {
+    "weather": WeatherSkill,
     "chitchat": ChitchatSkill,
     "kb_search": KBSearchSkill,
 }
