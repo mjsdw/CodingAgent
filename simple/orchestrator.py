@@ -82,7 +82,8 @@ class Orchestrator:
     def __init__(self):
         self.router = HybridRouter()
 
-    def query(self, question: str, session_id: str = None, task_control=None) -> tuple[str, list[Document]]:
+    def query(self, question: str, session_id: str = None, task_control=None,
+              pre_classified_skill=None) -> tuple[str, list[Document]]:
         # """处理用户问题，返回 (答案, 引用片段)。
         #
         # :param question: 用户原始问题
@@ -120,7 +121,10 @@ class Orchestrator:
 
         # ---- 2. Router 选 Skill ----
         print(f"\n🧠 [Orchestrator] 开始处理问题：{question}")
-        skill = self.router.classify(effective_question, ctx)
+        if pre_classified_skill is not None:
+            skill = pre_classified_skill
+        else:
+            skill = self.router.classify(effective_question, ctx)
 
         # 任务控制检查点：Router 之后、Skill.execute 之前
         # 用户在 Router 期间点暂停 → 阻塞等待，Skill 不会被执行

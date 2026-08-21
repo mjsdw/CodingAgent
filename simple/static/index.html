@@ -3,103 +3,157 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RAG 代码助手 · IDE 模式</title>
+  <title>CodeAgent · AI 编程助手</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg: #1e1e1e;
-      --sidebar-bg: #252526;
-      --editor-bg: #1e1e1e;
-      --chat-bg: #252526;
-      --border: #3c3c3c;
-      --text: #cccccc;
-      --text-muted: #858585;
-      --accent: #007acc;
-      --accent-hover: #1f8ad2;
-      --user-bubble: #007acc;
-      --ai-bubble: #2d2d30;
-      --success: #4ec9b0;
-      --warning: #dcdcaa;
-      --error: #f48771;
+      --bg: #ffffff;
+      --sidebar-bg: #f9f9fb;
+      --editor-bg: #ffffff;
+      --chat-bg: #f9f9fb;
+      --border: #ececef;
+      --border-strong: #d8d8de;
+      --text: #1a1a2e;
+      --text-muted: #6e6e80;
+      --text-subtle: #a0a0b0;
+      --accent: #5b5bd6;
+      --accent-hover: #4a4ac9;
+      --accent-soft: #ededf8;
+      --accent-glow: rgba(91,91,214,0.12);
+      --user-bubble: #5b5bd6;
+      --ai-bubble: #ffffff;
+      --success: #16a34a;
+      --success-soft: #dcfce7;
+      --warning: #d97706;
+      --warning-soft: #fef3c7;
+      --error: #dc2626;
+      --error-soft: #fee2e2;
+      --shadow-xs: 0 1px 2px rgba(20,20,40,0.03);
+      --shadow-sm: 0 1px 3px rgba(20,20,40,0.05), 0 1px 2px rgba(20,20,40,0.03);
+      --shadow-md: 0 4px 16px rgba(20,20,40,0.06), 0 1px 4px rgba(20,20,40,0.04);
+      --shadow-lg: 0 12px 40px rgba(20,20,40,0.10), 0 4px 12px rgba(20,20,40,0.05);
+      --radius-sm: 6px;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+      --radius-xl: 16px;
+      --font-ui: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+      --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Code", "Consolas", monospace;
     }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-family: var(--font-ui);
       background: var(--bg);
       color: var(--text);
       height: 100vh;
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
     /* ---- 顶部栏 ---- */
     header {
-      background: #2d2d30;
+      background: #fff;
       border-bottom: 1px solid var(--border);
-      padding: 8px 16px;
+      padding: 0 20px;
       display: flex;
       align-items: center;
-      gap: 16px;
+      gap: 14px;
       flex-shrink: 0;
+      height: 52px;
+      z-index: 10;
     }
     header h1 {
-      font-size: 14px;
-      font-weight: 500;
+      font-size: 16px;
+      font-weight: 700;
       color: var(--text);
+      letter-spacing: -0.4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    header h1 .logo-dot {
+      width: 22px; height: 22px;
+      border-radius: 6px;
+      background: linear-gradient(135deg, #6366f1 0%, #818cf8 50%, #a78bfa 100%);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 6px rgba(99,102,241,0.35);
+    }
+    header h1 .logo-dot::after {
+      content: '';
+      width: 8px; height: 8px;
+      border: 2px solid #fff;
+      border-radius: 3px;
     }
     header .subtitle {
       font-size: 11px;
-      color: var(--text-muted);
-      margin-left: 8px;
+      color: var(--accent);
+      padding: 3px 10px;
+      background: var(--accent-soft);
+      border-radius: 20px;
+      font-weight: 600;
     }
     #open-project-btn {
       background: var(--accent);
-      color: white;
+      color: #fff;
       border: none;
-      padding: 5px 14px;
-      border-radius: 4px;
+      padding: 7px 16px;
+      border-radius: var(--radius-sm);
       font-size: 12px;
+      font-weight: 600;
       cursor: pointer;
-      transition: background 0.2s;
+      transition: all 0.2s ease;
       white-space: nowrap;
+      font-family: var(--font-ui);
+      box-shadow: 0 1px 3px rgba(91,91,214,0.3);
     }
-    #open-project-btn:hover { background: var(--accent-hover); }
-    #open-project-btn:disabled { background: #555; cursor: not-allowed; }
+    #open-project-btn:hover { background: var(--accent-hover); box-shadow: 0 2px 10px rgba(91,91,214,0.4); transform: translateY(-1px); }
+    #open-project-btn:active { transform: translateY(0); }
+    #open-project-btn:disabled { background: #e5e5ea; cursor: not-allowed; box-shadow: none; transform: none; }
     #project-path-input {
-      background: #3c3c3c;
+      background: #f4f4f7;
       border: 1px solid var(--border);
       color: var(--text);
-      padding: 4px 8px;
-      border-radius: 3px;
+      padding: 7px 12px;
+      border-radius: var(--radius-sm);
       font-size: 12px;
-      font-family: monospace;
+      font-family: var(--font-mono);
       width: 280px;
       outline: none;
+      transition: all 0.2s;
     }
-    #project-path-input:focus { border-color: var(--accent); }
-    #project-path-input::placeholder { color: var(--text-muted); }
+    #project-path-input:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-glow); }
+    #project-path-input::placeholder { color: var(--text-subtle); }
     .header-spacer { flex: 1; }
     #session-info {
       font-size: 11px;
-      color: var(--text-muted);
-      font-family: monospace;
+      color: var(--text-subtle);
+      font-family: var(--font-mono);
     }
     #clear-btn {
       background: transparent;
-      border: 1px solid var(--border);
-      border-radius: 3px;
-      padding: 4px 10px;
-      font-size: 11px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      padding: 6px 14px;
+      font-size: 12px;
       cursor: pointer;
-      color: var(--text);
+      color: var(--text-muted);
+      transition: all 0.2s;
+      font-family: var(--font-ui);
+      font-weight: 500;
     }
-    #clear-btn:hover { border-color: var(--accent); color: var(--accent); }
+    #clear-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 
     /* ---- 三栏主体 ---- */
     #main-body {
       flex: 1;
       display: grid;
-      grid-template-columns: 240px 1fr 360px;
+      grid-template-columns: 248px 1fr 380px;
       overflow: hidden;
     }
 
@@ -112,12 +166,12 @@
       overflow: hidden;
     }
     #sidebar-header {
-      padding: 8px 12px;
-      font-size: 11px;
-      font-weight: 600;
+      padding: 14px 16px 10px;
+      font-size: 10px;
+      font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--text-muted);
+      letter-spacing: 1px;
+      color: var(--text-subtle);
       border-bottom: 1px solid var(--border);
       display: flex;
       align-items: center;
@@ -126,48 +180,58 @@
     #sidebar-header .project-name {
       color: var(--text);
       text-transform: none;
-      font-weight: 500;
+      font-weight: 600;
       letter-spacing: 0;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
       max-width: 140px;
+      font-size: 12px;
     }
     #tree-container {
       flex: 1;
       overflow-y: auto;
-      padding: 4px 0;
+      padding: 6px 0;
       font-size: 13px;
     }
     .tree-item {
-      padding: 2px 12px;
+      padding: 4px 16px;
       cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 6px;
       white-space: nowrap;
       user-select: none;
       color: var(--text);
+      transition: background 0.12s, color 0.12s;
     }
-    .tree-item:hover { background: #2a2d2e; }
-    .tree-item.active { background: #37373d; }
-    .tree-item .tree-icon { width: 14px; text-align: center; opacity: 0.8; }
+    .tree-item:hover { background: rgba(91,91,214,0.06); }
+    .tree-item.active { background: var(--accent-soft); color: var(--accent); }
+    .tree-item .tree-icon { width: 15px; text-align: center; opacity: 0.65; font-size: 12px; }
     .tree-item .tree-name {
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .tree-children { margin-left: 12px; }
+    .tree-children { margin-left: 14px; }
     .tree-empty {
-      padding: 16px 12px;
-      color: var(--text-muted);
+      padding: 40px 16px;
+      color: var(--text-subtle);
       font-size: 12px;
       text-align: center;
+      line-height: 1.8;
     }
-    /* 滚动条样式 */
+    .tree-empty .empty-icon {
+      font-size: 28px;
+      display: block;
+      margin-bottom: 8px;
+      opacity: 0.4;
+    }
+    /* 滚动条 */
     #tree-container::-webkit-scrollbar, #chat-area::-webkit-scrollbar,
-    #editor-tabs::-webkit-scrollbar { width: 8px; height: 8px; }
+    #editor-tabs::-webkit-scrollbar { width: 6px; height: 6px; }
     #tree-container::-webkit-scrollbar-thumb, #chat-area::-webkit-scrollbar-thumb,
-    #editor-tabs::-webkit-scrollbar-thumb { background: #424242; border-radius: 4px; }
+    #editor-tabs::-webkit-scrollbar-thumb { background: #d4d4dc; border-radius: 3px; }
+    #tree-container::-webkit-scrollbar-thumb:hover, #chat-area::-webkit-scrollbar-thumb:hover { background: #b0b0bc; }
     #tree-container::-webkit-scrollbar-track, #chat-area::-webkit-scrollbar-track,
     #editor-tabs::-webkit-scrollbar-track { background: transparent; }
 
@@ -180,34 +244,38 @@
     }
     #editor-tabs {
       display: flex;
-      background: #2d2d30;
+      background: #fafafb;
       border-bottom: 1px solid var(--border);
       overflow-x: auto;
       flex-shrink: 0;
+      min-height: 38px;
     }
     .editor-tab {
-      padding: 6px 14px;
+      padding: 0 16px;
       font-size: 12px;
       color: var(--text-muted);
       cursor: pointer;
-      border-right: 1px solid var(--border);
       display: flex;
       align-items: center;
       gap: 6px;
       white-space: nowrap;
-      transition: background 0.15s;
+      transition: all 0.15s;
+      border-bottom: 2px solid transparent;
+      height: 38px;
+      font-weight: 500;
     }
-    .editor-tab:hover { background: #2a2d2e; }
+    .editor-tab:hover { background: rgba(0,0,0,0.02); color: var(--text); }
     .editor-tab.active {
       background: var(--editor-bg);
-      color: var(--text);
+      color: var(--accent);
       border-bottom: 2px solid var(--accent);
-      margin-bottom: -1px;
+      font-weight: 600;
     }
     .editor-tab .close-btn {
-      font-size: 14px;
-      opacity: 0.6;
+      font-size: 15px;
+      opacity: 0.3;
       padding: 0 2px;
+      transition: opacity 0.15s, color 0.15s;
     }
     .editor-tab .close-btn:hover { opacity: 1; color: var(--error); }
     #editor-container {
@@ -225,12 +293,22 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      color: var(--text-muted);
-      font-size: 13px;
+      color: var(--text-subtle);
+      font-size: 14px;
       flex-direction: column;
-      gap: 8px;
+      gap: 12px;
     }
-    #editor-empty .hint { font-size: 11px; opacity: 0.6; }
+    #editor-empty .empty-icon-lg {
+      width: 56px; height: 56px;
+      border-radius: var(--radius-lg);
+      background: var(--accent-soft);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      margin-bottom: 4px;
+    }
+    #editor-empty .hint { font-size: 12px; color: var(--text-subtle); }
 
     /* ---- 右：Chat ---- */
     #chat-pane {
@@ -241,53 +319,64 @@
       overflow: hidden;
     }
     #chat-header {
-      padding: 8px 12px;
-      font-size: 11px;
+      padding: 12px 16px;
+      font-size: 13px;
       font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--text-muted);
+      color: var(--text);
       border-bottom: 1px solid var(--border);
+      background: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #chat-header .chat-header-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 0 3px var(--success-soft);
     }
     #chat-area {
       flex: 1;
       overflow-y: auto;
-      padding: 12px;
+      padding: 20px 16px;
     }
-    .message { margin-bottom: 12px; display: flex; flex-direction: column; }
+    .message { margin-bottom: 16px; display: flex; flex-direction: column; }
     .message.user { align-items: flex-end; }
     .message.assistant { align-items: flex-start; }
     .bubble {
       max-width: 85%;
-      padding: 10px 14px;
-      border-radius: 10px;
-      line-height: 1.5;
+      padding: 12px 16px;
+      border-radius: var(--radius-lg);
+      line-height: 1.6;
       white-space: pre-wrap;
       word-break: break-word;
       font-size: 13px;
     }
     .message.user .bubble {
       background: var(--user-bubble);
-      color: white;
-      border-bottom-right-radius: 3px;
+      color: #fff;
+      border-bottom-right-radius: 4px;
+      box-shadow: 0 2px 8px rgba(91,91,214,0.2);
     }
     .message.assistant .bubble {
-      background: var(--ai-bubble);
+      background: #fff;
       color: var(--text);
       border: 1px solid var(--border);
-      border-bottom-left-radius: 3px;
+      border-bottom-left-radius: 4px;
+      box-shadow: var(--shadow-xs);
     }
-    .meta { font-size: 10px; color: var(--text-muted); margin-top: 4px; }
+    .meta { font-size: 10px; color: var(--text-subtle); margin-top: 4px; }
     .typing {
       display: inline-block;
-      padding: 10px 14px;
-      background: var(--ai-bubble);
+      padding: 12px 16px;
+      background: #fff;
       border: 1px solid var(--border);
-      border-radius: 10px;
-      border-bottom-left-radius: 3px;
+      border-radius: var(--radius-lg);
+      border-bottom-left-radius: 4px;
       color: var(--text-muted);
       font-style: italic;
       font-size: 13px;
+      box-shadow: var(--shadow-xs);
     }
     .typing::after { content: '...'; animation: dots 1.4s infinite; }
     @keyframes dots {
@@ -295,12 +384,13 @@
       40% { content: '..'; }
       60%, 100% { content: '...'; }
     }
-    .error { background: #5a1d1d !important; border-color: #7a2d2d !important; }
+    .error { background: var(--error-soft) !important; border-color: #fecaca !important; color: #991b1b !important; }
 
     #chat-input-area {
-      padding: 8px 12px;
+      padding: 12px 16px;
       border-top: 1px solid var(--border);
       flex-shrink: 0;
+      background: #fff;
     }
     #input-form {
       display: flex;
@@ -308,105 +398,125 @@
     }
     #question-input {
       flex: 1;
-      background: #3c3c3c;
+      background: #f4f4f7;
       border: 1px solid var(--border);
       color: var(--text);
-      padding: 8px 12px;
-      border-radius: 4px;
+      padding: 10px 14px;
+      border-radius: var(--radius-md);
       font-size: 13px;
       outline: none;
-      font-family: inherit;
+      font-family: var(--font-ui);
+      transition: all 0.2s;
     }
-    #question-input:focus { border-color: var(--accent); }
+    #question-input:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-glow); }
     #question-input:disabled { opacity: 0.5; }
+    #question-input::placeholder { color: var(--text-subtle); }
     #submit-btn {
-      padding: 8px 16px;
+      padding: 10px 22px;
       background: var(--accent);
-      color: white;
+      color: #fff;
       border: none;
-      border-radius: 4px;
+      border-radius: var(--radius-md);
       font-size: 13px;
       cursor: pointer;
-      transition: background 0.2s;
+      transition: all 0.2s;
+      font-weight: 600;
+      font-family: var(--font-ui);
+      box-shadow: 0 1px 3px rgba(91,91,214,0.3);
     }
-    #submit-btn:hover:not(:disabled) { background: var(--accent-hover); }
-    #submit-btn:disabled { background: #555; cursor: not-allowed; }
+    #submit-btn:hover:not(:disabled) { background: var(--accent-hover); box-shadow: 0 2px 12px rgba(91,91,214,0.4); transform: translateY(-1px); }
+    #submit-btn:active:not(:disabled) { transform: translateY(0); }
+    #submit-btn:disabled { background: #e5e5ea; cursor: not-allowed; box-shadow: none; transform: none; }
 
     /* ---- 状态栏 ---- */
     #status-bar {
       background: var(--accent);
-      color: white;
-      padding: 2px 12px;
+      color: rgba(255,255,255,0.9);
+      padding: 3px 16px;
       font-size: 11px;
       display: flex;
       justify-content: space-between;
       flex-shrink: 0;
+      font-family: var(--font-mono);
+      height: 24px;
+      align-items: center;
     }
-    #status-bar .left, #status-bar .right { display: flex; gap: 12px; }
+    #status-bar .left, #status-bar .right { display: flex; gap: 14px; }
 
     /* ---- 模态框 ---- */
     .modal-overlay {
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.5);
+      background: rgba(20,20,40,0.12);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
       display: flex;
       align-items: center;
       justify-content: center;
       z-index: 1000;
     }
     .modal {
-      background: var(--sidebar-bg);
+      background: #fff;
       border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 20px;
-      width: 460px;
+      border-radius: var(--radius-xl);
+      padding: 28px;
+      width: 480px;
       max-width: 90vw;
+      box-shadow: var(--shadow-lg);
     }
     .modal h3 {
-      font-size: 14px;
-      margin-bottom: 12px;
+      font-size: 16px;
+      margin-bottom: 16px;
       color: var(--text);
+      font-weight: 700;
     }
     .modal input[type="text"] {
       width: 100%;
-      background: #3c3c3c;
+      background: #f4f4f7;
       border: 1px solid var(--border);
       color: var(--text);
-      padding: 8px 12px;
-      border-radius: 4px;
+      padding: 10px 14px;
+      border-radius: var(--radius-md);
       font-size: 13px;
-      font-family: monospace;
+      font-family: var(--font-mono);
       outline: none;
-      margin-bottom: 12px;
+      margin-bottom: 16px;
+      transition: all 0.2s;
     }
-    .modal input[type="text"]:focus { border-color: var(--accent); }
+    .modal input[type="text"]:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-glow); }
     .modal-actions {
       display: flex;
       gap: 8px;
       justify-content: flex-end;
     }
     .modal-btn {
-      padding: 6px 16px;
-      border-radius: 4px;
-      font-size: 12px;
+      padding: 8px 20px;
+      border-radius: var(--radius-md);
+      font-size: 13px;
       cursor: pointer;
-      border: 1px solid var(--border);
-      background: transparent;
-      color: var(--text);
+      border: 1px solid var(--border-strong);
+      background: #fff;
+      color: var(--text-muted);
+      transition: all 0.2s;
+      font-family: var(--font-ui);
+      font-weight: 500;
     }
     .modal-btn.primary {
       background: var(--accent);
-      color: white;
+      color: #fff;
       border-color: var(--accent);
+      box-shadow: 0 1px 3px rgba(91,91,214,0.3);
     }
     .modal-btn.primary:hover { background: var(--accent-hover); }
-    .modal-btn:hover { border-color: var(--text-muted); }
+    .modal-btn:hover { border-color: var(--text-muted); color: var(--text); }
 
     /* ---- Diff 预览模态框 ---- */
     #diff-overlay {
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.6);
+      background: rgba(20,20,40,0.15);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
       display: none;
       align-items: center;
       justify-content: center;
@@ -414,19 +524,20 @@
     }
     #diff-overlay.active { display: flex; }
     #diff-modal {
-      background: var(--sidebar-bg);
+      background: #fff;
       border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: var(--radius-xl);
       width: 92vw;
       max-width: 1400px;
       height: 88vh;
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      box-shadow: var(--shadow-lg);
     }
     #diff-header {
-      padding: 10px 16px;
-      background: #2d2d30;
+      padding: 14px 24px;
+      background: #fff;
       border-bottom: 1px solid var(--border);
       display: flex;
       align-items: center;
@@ -434,53 +545,54 @@
       flex-shrink: 0;
     }
     #diff-title {
-      font-size: 14px;
-      font-weight: 500;
+      font-size: 15px;
+      font-weight: 700;
       color: var(--text);
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
     }
     #diff-title .pending-badge {
       background: var(--warning);
-      color: #1e1e1e;
+      color: #fff;
       font-size: 11px;
-      padding: 2px 8px;
-      border-radius: 10px;
+      padding: 3px 10px;
+      border-radius: 20px;
       font-weight: 600;
     }
     #diff-file-tabs {
       display: flex;
-      gap: 4px;
+      gap: 6px;
       overflow-x: auto;
-      padding: 6px 16px;
-      background: #252526;
+      padding: 10px 24px;
+      background: #fafafb;
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
     }
     .diff-file-tab {
-      padding: 4px 12px;
+      padding: 6px 14px;
       font-size: 12px;
-      background: #3c3c3c;
+      background: #fff;
       border: 1px solid var(--border);
-      border-radius: 4px;
+      border-radius: var(--radius-sm);
       cursor: pointer;
       color: var(--text-muted);
       white-space: nowrap;
       transition: all 0.15s;
+      font-weight: 500;
     }
-    .diff-file-tab:hover { color: var(--text); border-color: var(--text-muted); }
+    .diff-file-tab:hover { color: var(--text); border-color: var(--text-muted); box-shadow: var(--shadow-xs); }
     .diff-file-tab.active {
       background: var(--accent);
-      color: white;
+      color: #fff;
       border-color: var(--accent);
     }
     .diff-file-tab .action-tag {
       font-size: 10px;
-      padding: 1px 5px;
-      border-radius: 3px;
-      margin-left: 4px;
-      background: rgba(255,255,255,0.15);
+      padding: 1px 6px;
+      border-radius: 4px;
+      margin-left: 6px;
+      background: rgba(255,255,255,0.2);
     }
     #diff-editor-container {
       flex: 1;
@@ -492,8 +604,8 @@
       top: 0; left: 0; right: 0; bottom: 0;
     }
     #diff-footer {
-      padding: 12px 16px;
-      background: #2d2d30;
+      padding: 16px 24px;
+      background: #fff;
       border-top: 1px solid var(--border);
       display: flex;
       justify-content: space-between;
@@ -509,49 +621,52 @@
       gap: 10px;
     }
     .diff-btn {
-      padding: 8px 22px;
-      border-radius: 4px;
+      padding: 10px 28px;
+      border-radius: var(--radius-md);
       font-size: 13px;
       cursor: pointer;
-      border: 1px solid var(--border);
-      background: transparent;
+      border: 1px solid var(--border-strong);
+      background: #fff;
       color: var(--text);
-      font-weight: 500;
+      font-weight: 600;
       transition: all 0.15s;
+      font-family: var(--font-ui);
     }
-    .diff-btn:hover:not(:disabled) { border-color: var(--text-muted); }
+    .diff-btn:hover:not(:disabled) { border-color: var(--text-muted); box-shadow: var(--shadow-sm); }
     .diff-btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .diff-btn.confirm {
-      background: #4ec9b0;
-      color: #1e1e1e;
-      border-color: #4ec9b0;
+      background: var(--success);
+      color: #fff;
+      border-color: var(--success);
+      box-shadow: 0 1px 3px rgba(22,163,74,0.3);
     }
-    .diff-btn.confirm:hover:not(:disabled) { background: #5dd9c0; }
+    .diff-btn.confirm:hover:not(:disabled) { background: #15803d; box-shadow: 0 2px 10px rgba(22,163,74,0.4); }
     .diff-btn.cancel {
-      background: #f48771;
-      color: #1e1e1e;
-      border-color: #f48771;
+      background: var(--error);
+      color: #fff;
+      border-color: var(--error);
+      box-shadow: 0 1px 3px rgba(220,38,38,0.3);
     }
-    .diff-btn.cancel:hover:not(:disabled) { background: #ff9781; }
+    .diff-btn.cancel:hover:not(:disabled) { background: #b91c1c; box-shadow: 0 2px 10px rgba(220,38,38,0.4); }
     .diff-loading {
       position: absolute;
       top: 50%; left: 50%;
       transform: translate(-50%, -50%);
-      color: var(--text-muted);
+      color: var(--text-subtle);
       font-size: 13px;
     }
   </style>
 </head>
 <body>
   <header>
-    <h1>RAG 代码助手</h1>
+    <h1><span class="logo-dot"></span>CodeAgent</h1>
     <span class="subtitle" id="mode-label">IDE 模式</span>
-    <button id="open-project-btn">📁 打开项目</button>
+    <button id="open-project-btn">打开项目</button>
     <input type="text" id="project-path-input" placeholder="或手动输入项目路径，如 d:/myproject" style="display:none;">
     <button id="open-path-btn" style="display:none;">打开</button>
     <div class="header-spacer"></div>
     <span id="session-info">会话：加载中</span>
-    <button id="clear-btn" title="清空当前会话">🔄 新会话</button>
+    <button id="clear-btn" title="清空当前会话">新会话</button>
   </header>
 
   <div id="main-body">
@@ -562,7 +677,7 @@
         <span class="project-name" id="project-name-display"></span>
       </div>
       <div id="tree-container">
-        <div class="tree-empty">点击「打开项目」选择目录</div>
+        <div class="tree-empty"><span class="empty-icon">📁</span>点击「打开项目」选择目录</div>
       </div>
     </div>
 
@@ -571,7 +686,8 @@
       <div id="editor-tabs"></div>
       <div id="editor-container">
         <div id="editor-empty">
-          <div>📂 暂无打开的文件</div>
+          <div class="empty-icon-lg">📄</div>
+          <div>暂无打开的文件</div>
           <div class="hint">从左侧文件树点击文件，或让 Agent 修改代码</div>
         </div>
         <div id="monaco-editor" style="display:none;"></div>
@@ -580,7 +696,7 @@
 
     <!-- 右：AI Chat -->
     <div id="chat-pane">
-      <div id="chat-header">AI 助手</div>
+      <div id="chat-header"><span class="chat-header-dot"></span>AI 助手</div>
       <div id="chat-area">
         <div class="message assistant">
           <div class="bubble">你好！打开项目后，我可以帮你扫描和修改代码。直接提问即可。</div>
@@ -688,21 +804,31 @@
     require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } });
     require(['vs/editor/editor.main'], function () {
       monacoReady = true;
-      // 定义深色主题（VS Code 风格）
-      monaco.editor.defineTheme('rag-dark', {
-        base: 'vs-dark',
+      // 定义亮色主题（干净白底）
+      monaco.editor.defineTheme('rag-light', {
+        base: 'vs',
         inherit: true,
         rules: [],
         colors: {
-          'editor.background': '#1e1e1e',
-          'editor.foreground': '#cccccc',
+          'editor.background': '#ffffff',
+          'editor.foreground': '#1a1a2e',
+          'editorLineNumber.foreground': '#c0c0cc',
+          'editorLineNumber.activeForeground': '#6e6e80',
+          'editor.lineHighlightBackground': '#f9f9fb',
+          'editor.lineHighlightBorder': '#f0f0f4',
+          'editor.selectionBackground': '#ededf8',
+          'editor.inactiveSelectionBackground': '#f4f4f7',
+          'editorCursor.foreground': '#5b5bd6',
+          'editor.findMatchBackground': '#ededf8',
+          'editorIndentGuide.background': '#f0f0f4',
+          'editorIndentGuide.activeBackground': '#d8d8de',
         }
       });
       // 创建编辑器实例
       editor = monaco.editor.create(monacoEditorDiv, {
         value: '',
         language: 'plaintext',
-        theme: 'rag-dark',
+        theme: 'rag-light',
         automaticLayout: true,
         fontSize: 13,
         minimap: { enabled: false },
@@ -1034,13 +1160,13 @@
 
         // 警告图标 + 标题
         const title = document.createElement('div');
-        title.style.cssText = 'font-size:14px;font-weight:600;margin-bottom:8px;color:var(--warning,#dcb45a);';
+        title.style.cssText = 'font-size:14px;font-weight:700;margin-bottom:8px;color:#d97706;font-family:var(--font-ui);';
         title.textContent = '⚠️ 请先打开项目或上传代码文件';
         bubble.appendChild(title);
 
         // 正文
         const desc = document.createElement('div');
-        desc.style.cssText = 'font-size:13px;line-height:1.6;margin-bottom:12px;color:var(--text);';
+        desc.style.cssText = 'font-size:13px;line-height:1.6;margin-bottom:12px;color:#1a1a2e;font-family:var(--font-ui);';
         desc.textContent = content.split('\n').filter(l => !l.startsWith('⚠️')).join('\n').trim();
         bubble.appendChild(desc);
 
@@ -1050,7 +1176,7 @@
 
         const openBtn = document.createElement('button');
         openBtn.textContent = '📁 打开项目';
-        openBtn.style.cssText = 'padding:6px 16px;border-radius:4px;border:1px solid var(--accent,#4ec9b0);background:var(--accent,#4ec9b0);color:#1e1e1e;cursor:pointer;font-size:13px;font-weight:500;';
+        openBtn.style.cssText = 'padding:7px 18px;border-radius:6px;border:1px solid #5b5bd6;background:#5b5bd6;color:#fff;cursor:pointer;font-size:13px;font-weight:600;font-family:var(--font-ui);box-shadow:0 1px 3px rgba(91,91,214,0.3);transition:all 0.2s;';
         openBtn.addEventListener('click', () => {
           openProjectBtn.click();
         });
@@ -1175,17 +1301,17 @@
         removeTaskControls();  // 先清理旧的
         const bar = document.createElement('div');
         bar.id = 'task-controls';
-        bar.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 14px;margin:8px 0;background:var(--surface-2,#252526);border-radius:6px;border:1px solid var(--border,#3c3c3c);font-size:13px;';
+        bar.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 14px;margin:10px 0;background:#f9f9fb;border-radius:8px;border:1px solid #ececef;font-size:13px;';
 
         const status = document.createElement('span');
         status.id = 'task-status-text';
         status.textContent = '⏳ 思考中...';
-        status.style.cssText = 'flex:1;color:var(--text-secondary,#999);';
+        status.style.cssText = 'flex:1;color:#6e6e80;';
 
         const pauseBtn = document.createElement('button');
         pauseBtn.id = 'task-pause-btn';
         pauseBtn.textContent = '⏸ 暂停';
-        pauseBtn.style.cssText = 'padding:4px 12px;border-radius:4px;border:1px solid var(--border,#3c3c3c);background:transparent;color:var(--text);cursor:pointer;font-size:12px;';
+        pauseBtn.style.cssText = 'padding:5px 14px;border-radius:6px;border:1px solid #d8d8de;background:#fff;color:#6e6e80;cursor:pointer;font-size:12px;font-family:var(--font-ui);font-weight:500;transition:all 0.2s;';
         pauseBtn.addEventListener('click', async () => {
           try {
             const r = await fetch(`/api/task/${taskId}/pause`, { method: 'POST' });
@@ -1201,7 +1327,7 @@
         const resumeBtn = document.createElement('button');
         resumeBtn.id = 'task-resume-btn';
         resumeBtn.textContent = '▶ 继续';
-        resumeBtn.style.cssText = 'padding:4px 12px;border-radius:4px;border:1px solid var(--accent,#4ec9b0);background:var(--accent,#4ec9b0);color:#1e1e1e;cursor:pointer;font-size:12px;';
+        resumeBtn.style.cssText = 'padding:5px 14px;border-radius:6px;border:1px solid #5b5bd6;background:#5b5bd6;color:#fff;cursor:pointer;font-size:12px;font-family:var(--font-ui);font-weight:500;box-shadow:0 1px 3px rgba(91,91,214,0.3);transition:all 0.2s;';
         resumeBtn.style.display = 'none';
         resumeBtn.addEventListener('click', async () => {
           try {
@@ -1217,7 +1343,7 @@
 
         const cancelBtn = document.createElement('button');
         cancelBtn.textContent = '✗ 取消';
-        cancelBtn.style.cssText = 'padding:4px 12px;border-radius:4px;border:1px solid var(--danger,#f48771);background:transparent;color:var(--danger,#f48771);cursor:pointer;font-size:12px;';
+        cancelBtn.style.cssText = 'padding:5px 14px;border-radius:6px;border:1px solid #dc2626;background:transparent;color:#dc2626;cursor:pointer;font-size:12px;font-family:var(--font-ui);font-weight:500;transition:all 0.2s;';
         cancelBtn.addEventListener('click', async () => {
           try {
             await fetch(`/api/task/${taskId}/cancel`, { method: 'POST' });
@@ -1377,7 +1503,7 @@
     function createDiffEditor() {
       if (diffEditor) return;  // 已创建
       diffEditor = monaco.editor.createDiffEditor(diffEditorDiv, {
-        theme: 'rag-dark',
+        theme: 'rag-light',
         automaticLayout: true,
         fontSize: 13,
         readOnly: true,         // diff 预览只读

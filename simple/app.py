@@ -257,14 +257,11 @@ async def health():
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
-    """问答主接口（异步模式）：提交后立即返回 task_id，后台执行。
+    """问答主接口：按 Skill 类型自动选择同步或异步模式。
 
-    流程：
-      1. 创建 TaskControl + 后台线程跑 Orchestrator.query
-      2. 立即返回 task_id（前端轮询 /api/task/{id}/status 获取结果）
-      3. 前端可通过 /api/task/{id}/pause、/resume、/cancel 控制
-
-    兼容模式：前端传 wait=true 时走旧的同步阻塞逻辑。
+    同步模式（闲聊/天气/知识库/拦截）：直接返回 answer + sources。
+    异步模式（CodeGen）：返回 task_id，前端轮询 /api/task/{id}/status，
+                        支持暂停/继续/取消。
     """
     question = req.question.strip()
     if not question:
@@ -277,12 +274,48 @@ async def chat(req: ChatRequest):
     import uuid
     session_id = req.session_id or f"web-{uuid.uuid4().hex[:8]}"
 
-    # 创建任务
-    from core.task_manager import create_task, run_task, get_task
+    # ---- 路由预判：判断是否需要后台任务（仅 CodeGen 需要）----
+    from skills.base import SkillContext
+    from core.memory import get_memory_store
+    from config import ENABLE_MEMORY
+
+    history = []
+    if ENABLE_MEMORY and session_id:
+        store = get_memory_store()
+        history = store.get_history(session_id)
+
+    ctx = SkillContext(question=question, session_id=session_id, history=history)
+    skill = _orch.router.classify(question, ctx)
+
+    # 简单 Skill：同步执行，直接返回结果
+    if skill.name in ("chitchat", "weather", "kb_search", "intercept"):
+        answer, sources = _orch.query(
+            question, session_id=session_id,
+            pre_classified_skill=skill,
+        )
+        sources_data = []
+        for src in sources:
+            meta = getattr(src, "metadata", {}) or {}
+            score = (meta.get("similarity_distance")
+                     or meta.get("rrf_score")
+                     or meta.get("bm25_score"))
+            sources_data.append({
+                "page_content": getattr(src, "page_content", ""),
+                "metadata": meta,
+                "score": score,
+            })
+        return {
+            "answer": answer,
+            "sources": sources_data,
+            "session_id": session_id,
+            "mode": "sync",
+        }
+
+    # CodeGen Skill：后台线程 + 轮询（支持暂停/继续/取消）
+    from core.task_manager import create_task, run_task
     import threading
 
     tc = create_task(session_id=session_id, question=question)
-    # 后台线程执行（daemon=True，进程退出时自动结束）
     t = threading.Thread(
         target=run_task,
         args=(tc, _orch, question, session_id),
@@ -295,6 +328,7 @@ async def chat(req: ChatRequest):
         "task_id": tc.task_id,
         "session_id": session_id,
         "state": "running",
+        "mode": "async",
         "message": "任务已提交，请轮询 /api/task/{task_id}/status 获取结果",
     }
 
