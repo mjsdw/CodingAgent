@@ -32,6 +32,7 @@ from config import (
     WORKSPACE_TREE_DEFAULT_DEPTH, WORKSPACE_TREE_MAX_DEPTH,
 )
 from orchestrator import Orchestrator
+from core.memory import get_memory_store
 from tools.code_tool import (
     undo_last, get_history,
     add_session_workspace, add_session_open_file,
@@ -331,6 +332,38 @@ async def chat(req: ChatRequest):
         "mode": "async",
         "message": "任务已提交，请轮询 /api/task/{task_id}/status 获取结果",
     }
+
+
+# ===================== 历史会话管理 =====================
+
+@app.get("/api/sessions")
+async def list_sessions():
+    """列出所有历史会话（按最近活跃时间倒序）。
+
+    返回：{sessions: [{session_id, message_count, created_at, last_active_at, preview}], count}
+    """
+    store = get_memory_store()
+    sessions = store.list_sessions()
+    return {"sessions": sessions, "count": len(sessions)}
+
+
+@app.get("/api/sessions/{session_id}/messages")
+async def session_messages(session_id: str, limit: int = Query(default=500, ge=1, le=5000)):
+    """查询指定会话的历史消息（时间正序）。
+
+    返回：{session_id, count, messages: [{role, content, timestamp}]}
+    """
+    store = get_memory_store()
+    history = store.get_history(session_id, limit=limit)
+    return {"session_id": session_id, "count": len(history), "messages": history}
+
+
+@app.delete("/api/sessions/{session_id}")
+async def delete_session(session_id: str):
+    """删除指定会话的全部历史消息（不可恢复）。"""
+    store = get_memory_store()
+    store.clear(session_id)
+    return {"session_id": session_id, "status": "deleted"}
 
 
 @app.get("/api/task/{task_id}/status")

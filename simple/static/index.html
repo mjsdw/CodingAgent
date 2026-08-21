@@ -11,37 +11,41 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
       --bg: #ffffff;
-      --sidebar-bg: #f9f9fb;
+      --surface: #fbfbfd;
+      --surface-2: #f5f5f7;
+      --surface-3: #eeeef1;
       --editor-bg: #ffffff;
-      --chat-bg: #f9f9fb;
-      --border: #ececef;
-      --border-strong: #d8d8de;
-      --text: #1a1a2e;
-      --text-muted: #6e6e80;
-      --text-subtle: #a0a0b0;
-      --accent: #5b5bd6;
-      --accent-hover: #4a4ac9;
-      --accent-soft: #ededf8;
-      --accent-glow: rgba(91,91,214,0.12);
-      --user-bubble: #5b5bd6;
-      --ai-bubble: #ffffff;
+      --chat-bg: #ffffff;
+      --border: #ededf1;
+      --border-subtle: #f2f2f5;
+      --border-strong: #d8d8dd;
+      --text: #18181b;
+      --text-muted: #6b6b76;
+      --text-subtle: #a0a0ab;
+      --accent: #4f46e5;
+      --accent-hover: #4338ca;
+      --accent-soft: #eef2ff;
+      --accent-glow: rgba(79,70,229,0.10);
+      --user-bubble-bg: #f5f5f7;
       --success: #16a34a;
       --success-soft: #dcfce7;
       --warning: #d97706;
       --warning-soft: #fef3c7;
       --error: #dc2626;
       --error-soft: #fee2e2;
-      --shadow-xs: 0 1px 2px rgba(20,20,40,0.03);
-      --shadow-sm: 0 1px 3px rgba(20,20,40,0.05), 0 1px 2px rgba(20,20,40,0.03);
-      --shadow-md: 0 4px 16px rgba(20,20,40,0.06), 0 1px 4px rgba(20,20,40,0.04);
-      --shadow-lg: 0 12px 40px rgba(20,20,40,0.10), 0 4px 12px rgba(20,20,40,0.05);
+      --shadow-xs: 0 1px 2px rgba(15,15,25,0.04);
+      --shadow-sm: 0 1px 3px rgba(15,15,25,0.06), 0 1px 2px rgba(15,15,25,0.04);
+      --shadow-md: 0 4px 16px rgba(15,15,25,0.07), 0 1px 4px rgba(15,15,25,0.04);
+      --shadow-lg: 0 12px 40px rgba(15,15,25,0.12), 0 4px 12px rgba(15,15,25,0.06);
+      --shadow-composer: 0 1px 4px rgba(15,15,25,0.05), 0 8px 24px rgba(79,70,229,0.06);
       --radius-sm: 6px;
       --radius-md: 8px;
       --radius-lg: 12px;
       --radius-xl: 16px;
-      --font-ui: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+      --font-ui: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
       --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Code", "Consolas", monospace;
     }
+    html, body { height: 100%; }
     body {
       font-family: var(--font-ui);
       background: var(--bg);
@@ -52,130 +56,196 @@
       overflow: hidden;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
+      font-feature-settings: "cv11", "ss01";
+      letter-spacing: -0.006em;
     }
+    ::selection { background: var(--accent-soft); color: var(--accent); }
+
+    /* SVG icon defaults */
+    .icon { display: inline-flex; flex-shrink: 0; }
+    .icon svg { display: block; }
 
     /* ---- 顶部栏 ---- */
     header {
-      background: #fff;
+      background: var(--surface);
       border-bottom: 1px solid var(--border);
-      padding: 0 20px;
+      padding: 0 12px;
       display: flex;
       align-items: center;
-      gap: 14px;
+      gap: 10px;
       flex-shrink: 0;
-      height: 52px;
+      height: 36px;
       z-index: 10;
     }
     header h1 {
-      font-size: 16px;
-      font-weight: 700;
+      font-size: 12px;
+      font-weight: 500;
       color: var(--text);
-      letter-spacing: -0.4px;
+      letter-spacing: -0.01em;
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 7px;
     }
     header h1 .logo-dot {
-      width: 22px; height: 22px;
-      border-radius: 6px;
-      background: linear-gradient(135deg, #6366f1 0%, #818cf8 50%, #a78bfa 100%);
+      width: 18px; height: 18px;
+      border-radius: 5px;
+      background: linear-gradient(135deg, #4f46e5 0%, #6366f1 55%, #818cf8 100%);
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 2px 6px rgba(99,102,241,0.35);
+      position: relative;
+      flex-shrink: 0;
     }
-    header h1 .logo-dot::after {
-      content: '';
-      width: 8px; height: 8px;
-      border: 2px solid #fff;
-      border-radius: 3px;
-    }
+    header h1 .logo-dot svg { color: #fff; }
     header .subtitle {
       font-size: 11px;
-      color: var(--accent);
-      padding: 3px 10px;
-      background: var(--accent-soft);
+      color: var(--text-muted);
+      padding: 1px 8px;
+      background: transparent;
+      border: none;
       border-radius: 20px;
-      font-weight: 600;
+      font-weight: 500;
+      letter-spacing: 0;
     }
     #open-project-btn {
-      background: var(--accent);
-      color: #fff;
-      border: none;
-      padding: 7px 16px;
+      background: var(--surface-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 0 10px;
       border-radius: var(--radius-sm);
-      font-size: 12px;
-      font-weight: 600;
+      font-size: 11.5px;
+      font-weight: 500;
       cursor: pointer;
-      transition: all 0.2s ease;
+      transition: all 0.15s ease;
       white-space: nowrap;
       font-family: var(--font-ui);
-      box-shadow: 0 1px 3px rgba(91,91,214,0.3);
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      height: 24px;
     }
-    #open-project-btn:hover { background: var(--accent-hover); box-shadow: 0 2px 10px rgba(91,91,214,0.4); transform: translateY(-1px); }
+    #open-project-btn:hover { background: #fff; border-color: var(--border-strong); box-shadow: var(--shadow-xs); }
     #open-project-btn:active { transform: translateY(0); }
-    #open-project-btn:disabled { background: #e5e5ea; cursor: not-allowed; box-shadow: none; transform: none; }
+    #open-project-btn:disabled { background: var(--surface-2); color: var(--text-subtle); cursor: not-allowed; box-shadow: none; transform: none; opacity: 0.7; }
     #project-path-input {
-      background: #f4f4f7;
+      background: #fff;
       border: 1px solid var(--border);
       color: var(--text);
-      padding: 7px 12px;
+      padding: 0 10px;
       border-radius: var(--radius-sm);
-      font-size: 12px;
+      font-size: 11.5px;
       font-family: var(--font-mono);
-      width: 280px;
+      width: 240px;
       outline: none;
-      transition: all 0.2s;
+      transition: all 0.15s;
+      height: 24px;
     }
     #project-path-input:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-glow); }
     #project-path-input::placeholder { color: var(--text-subtle); }
+    #open-path-btn {
+      background: var(--accent);
+      color: #fff;
+      border: 1px solid var(--accent);
+      padding: 0 10px;
+      border-radius: var(--radius-sm);
+      font-size: 11.5px;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: var(--font-ui);
+      height: 24px;
+      transition: background 0.15s;
+    }
+    #open-path-btn:hover { background: var(--accent-hover); }
     .header-spacer { flex: 1; }
     #session-info {
-      font-size: 11px;
+      font-size: 10.5px;
       color: var(--text-subtle);
       font-family: var(--font-mono);
+      padding: 2px 7px;
+      background: var(--surface-2);
+      border-radius: var(--radius-sm);
     }
     #clear-btn {
       background: transparent;
-      border: 1px solid var(--border-strong);
+      border: 1px solid var(--border);
       border-radius: var(--radius-sm);
-      padding: 6px 14px;
-      font-size: 12px;
+      padding: 0 9px;
+      font-size: 11.5px;
       cursor: pointer;
       color: var(--text-muted);
-      transition: all 0.2s;
+      transition: all 0.15s;
       font-family: var(--font-ui);
       font-weight: 500;
+      height: 24px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
     }
-    #clear-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+    #clear-btn:hover { border-color: var(--border-strong); color: var(--text); background: var(--surface-2); }
 
-    /* ---- 三栏主体 ---- */
+    /* ---- 四栏主体 ---- */
     #main-body {
       flex: 1;
       display: grid;
-      grid-template-columns: 248px 1fr 380px;
+      grid-template-columns: 48px 244px 1fr 392px;
       overflow: hidden;
     }
 
+    /* ---- Activity Bar（最左图标栏） ---- */
+    #activity-bar {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 10px 0;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .activity-icon {
+      width: 32px; height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: var(--radius-sm);
+      color: var(--text-subtle);
+      cursor: pointer;
+      transition: all 0.15s;
+      position: relative;
+    }
+    .activity-icon:hover { color: var(--text-muted); background: var(--surface-2); }
+    .activity-icon.active { color: var(--text); }
+    .activity-icon.active::before {
+      content: '';
+      position: absolute;
+      left: -8px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 2px; height: 16px;
+      background: var(--accent);
+      border-radius: 0 2px 2px 0;
+    }
+    .activity-spacer { flex: 1; }
+
     /* ---- 左：文件树 ---- */
     #sidebar {
-      background: var(--sidebar-bg);
+      background: var(--surface);
       border-right: 1px solid var(--border);
       display: flex;
       flex-direction: column;
       overflow: hidden;
     }
     #sidebar-header {
-      padding: 14px 16px 10px;
+      padding: 10px 12px 6px;
       font-size: 10px;
-      font-weight: 700;
+      font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 1px;
-      color: var(--text-subtle);
-      border-bottom: 1px solid var(--border);
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 8px;
     }
     #sidebar-header .project-name {
       color: var(--text);
@@ -185,53 +255,84 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      max-width: 140px;
+      max-width: 150px;
       font-size: 12px;
+    }
+    #sidebar-header .project-name:empty::before {
+      content: '未打开';
+      color: var(--text-subtle);
+      font-weight: 400;
     }
     #tree-container {
       flex: 1;
       overflow-y: auto;
-      padding: 6px 0;
+      padding: 4px 0 12px;
       font-size: 13px;
     }
     .tree-item {
-      padding: 4px 16px;
+      padding: 3px 12px;
       cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 7px;
       white-space: nowrap;
       user-select: none;
       color: var(--text);
-      transition: background 0.12s, color 0.12s;
+      transition: background 0.1s, color 0.1s;
+      line-height: 1.5;
     }
-    .tree-item:hover { background: rgba(91,91,214,0.06); }
+    .tree-item:hover { background: var(--surface-2); }
     .tree-item.active { background: var(--accent-soft); color: var(--accent); }
-    .tree-item .tree-icon { width: 15px; text-align: center; opacity: 0.65; font-size: 12px; }
+    .tree-item .tree-icon {
+      width: 28px;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      flex-shrink: 0;
+    }
+    .tree-item .tree-icon svg { display: block; }
+    .tree-item .tree-icon .tree-chevron { width: 12px; height: 12px; color: var(--text-subtle); }
+    .tree-item .tree-icon .tree-folder { width: 15px; height: 15px; }
+    .tree-item .tree-icon .tree-file { width: 14px; height: 14px; margin-left: 15px; color: var(--text-subtle); }
+    .tree-item .tree-icon .tree-spin { width: 13px; height: 13px; margin-left: 15px; color: var(--text-subtle); animation: tree-spin 0.9s linear infinite; }
+    @keyframes tree-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) {
+      .tree-item .tree-icon .tree-spin { animation-duration: 2.4s; }
+    }
+    .tree-item.active .tree-icon { opacity: 1; }
     .tree-item .tree-name {
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .tree-children { margin-left: 14px; }
+    .tree-children { margin-left: 12px; }
     .tree-empty {
-      padding: 40px 16px;
+      padding: 48px 16px;
       color: var(--text-subtle);
       font-size: 12px;
       text-align: center;
       line-height: 1.8;
     }
     .tree-empty .empty-icon {
-      font-size: 28px;
+      font-size: 26px;
       display: block;
-      margin-bottom: 8px;
-      opacity: 0.4;
+      margin-bottom: 10px;
+      opacity: 0.45;
     }
     /* 滚动条 */
     #tree-container::-webkit-scrollbar, #chat-area::-webkit-scrollbar,
-    #editor-tabs::-webkit-scrollbar { width: 6px; height: 6px; }
+    #editor-tabs::-webkit-scrollbar { width: 10px; height: 10px; }
     #tree-container::-webkit-scrollbar-thumb, #chat-area::-webkit-scrollbar-thumb,
-    #editor-tabs::-webkit-scrollbar-thumb { background: #d4d4dc; border-radius: 3px; }
-    #tree-container::-webkit-scrollbar-thumb:hover, #chat-area::-webkit-scrollbar-thumb:hover { background: #b0b0bc; }
+    #editor-tabs::-webkit-scrollbar-thumb {
+      background: transparent;
+      border: 3px solid transparent;
+      border-radius: 8px;
+      background-clip: padding-box;
+    }
+    #tree-container:hover::-webkit-scrollbar-thumb,
+    #chat-area:hover::-webkit-scrollbar-thumb,
+    #editor-tabs:hover::-webkit-scrollbar-thumb { background: #cfcfd6; background-clip: padding-box; border: 3px solid transparent; }
+    #tree-container::-webkit-scrollbar-thumb:hover, #chat-area::-webkit-scrollbar-thumb:hover,
+    #editor-tabs::-webkit-scrollbar-thumb:hover { background: #b0b0bc; background-clip: padding-box; }
     #tree-container::-webkit-scrollbar-track, #chat-area::-webkit-scrollbar-track,
     #editor-tabs::-webkit-scrollbar-track { background: transparent; }
 
@@ -244,40 +345,57 @@
     }
     #editor-tabs {
       display: flex;
-      background: #fafafb;
+      background: var(--surface);
       border-bottom: 1px solid var(--border);
       overflow-x: auto;
       flex-shrink: 0;
-      min-height: 38px;
+      min-height: 35px;
     }
+    #editor-tabs::-webkit-scrollbar { height: 0; }
     .editor-tab {
-      padding: 0 16px;
+      padding: 0 12px;
       font-size: 12px;
       color: var(--text-muted);
       cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 7px;
       white-space: nowrap;
-      transition: all 0.15s;
-      border-bottom: 2px solid transparent;
-      height: 38px;
+      transition: all 0.12s;
+      border-bottom: 1px solid var(--border);
+      border-right: 1px solid var(--border-subtle);
+      height: 35px;
       font-weight: 500;
+      position: relative;
     }
-    .editor-tab:hover { background: rgba(0,0,0,0.02); color: var(--text); }
+    .editor-tab:hover { background: rgba(0,0,0,0.025); color: var(--text); }
     .editor-tab.active {
       background: var(--editor-bg);
-      color: var(--accent);
-      border-bottom: 2px solid var(--accent);
+      color: var(--text);
       font-weight: 600;
+      border-bottom: 1px solid var(--editor-bg);
+    }
+    .editor-tab.active::after {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: var(--accent);
     }
     .editor-tab .close-btn {
-      font-size: 15px;
-      opacity: 0.3;
+      font-size: 14px;
+      opacity: 0;
       padding: 0 2px;
-      transition: opacity 0.15s, color 0.15s;
+      margin-left: 2px;
+      width: 16px; height: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      transition: opacity 0.12s, color 0.12s, background 0.12s;
     }
-    .editor-tab .close-btn:hover { opacity: 1; color: var(--error); }
+    .editor-tab:hover .close-btn, .editor-tab.active .close-btn { opacity: 0.5; }
+    .editor-tab .close-btn:hover { opacity: 1; color: var(--error); background: var(--error-soft); }
     #editor-container {
       flex: 1;
       position: relative;
@@ -294,19 +412,71 @@
       align-items: center;
       justify-content: center;
       color: var(--text-subtle);
-      font-size: 14px;
+      font-size: 13px;
       flex-direction: column;
-      gap: 12px;
+      gap: 0;
+      background: var(--editor-bg);
+      padding: 32px;
+      overflow: auto;
     }
-    #editor-empty .empty-icon-lg {
-      width: 56px; height: 56px;
-      border-radius: var(--radius-lg);
-      background: var(--accent-soft);
+    #editor-empty .welcome {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 28px;
+    }
+    #editor-empty .welcome .welcome-logo {
+      width: 52px; height: 52px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #4f46e5 0%, #6366f1 55%, #818cf8 100%);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 24px;
-      margin-bottom: 4px;
+      color: #fff;
+      margin-bottom: 10px;
+      box-shadow: 0 4px 16px rgba(79,70,229,0.22);
+    }
+    #editor-empty .welcome .welcome-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.02em;
+    }
+    #editor-empty .welcome .welcome-sub {
+      font-size: 12.5px;
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+    #editor-empty .shortcut-list {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      width: 340px;
+      max-width: 100%;
+    }
+    #editor-empty .shortcut {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 7px 12px;
+      border-radius: var(--radius-sm);
+      font-size: 12.5px;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: background 0.12s;
+      border: 1px solid transparent;
+    }
+    #editor-empty .shortcut:hover { background: var(--surface-2); border-color: var(--border-subtle); color: var(--text); }
+    #editor-empty .shortcut kbd {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-subtle);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 1px 7px;
+      line-height: 1.6;
     }
     #editor-empty .hint { font-size: 12px; color: var(--text-subtle); }
 
@@ -319,135 +489,196 @@
       overflow: hidden;
     }
     #chat-header {
-      padding: 12px 16px;
-      font-size: 13px;
+      padding: 0 16px;
+      font-size: 12px;
       font-weight: 600;
       color: var(--text);
       border-bottom: 1px solid var(--border);
-      background: #fff;
+      background: var(--surface);
       display: flex;
       align-items: center;
       gap: 8px;
+      height: 36px;
+      flex-shrink: 0;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
     }
     #chat-header .chat-header-dot {
-      width: 8px; height: 8px;
+      width: 7px; height: 7px;
       border-radius: 50%;
       background: var(--success);
       box-shadow: 0 0 0 3px var(--success-soft);
     }
+    #chat-header .chat-model-tag {
+      margin-left: auto;
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-transform: none;
+      letter-spacing: 0;
+      padding: 2px 8px;
+      background: var(--surface-2);
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      font-family: var(--font-mono);
+    }
     #chat-area {
       flex: 1;
       overflow-y: auto;
-      padding: 20px 16px;
+      padding: 16px 16px 8px;
     }
-    .message { margin-bottom: 16px; display: flex; flex-direction: column; }
+    .message { margin-bottom: 18px; display: flex; flex-direction: column; }
     .message.user { align-items: flex-end; }
     .message.assistant { align-items: flex-start; }
     .bubble {
-      max-width: 85%;
-      padding: 12px 16px;
-      border-radius: var(--radius-lg);
-      line-height: 1.6;
+      max-width: 88%;
+      padding: 10px 14px;
+      border-radius: var(--radius-md);
+      line-height: 1.65;
       white-space: pre-wrap;
       word-break: break-word;
       font-size: 13px;
     }
     .message.user .bubble {
-      background: var(--user-bubble);
-      color: #fff;
-      border-bottom-right-radius: 4px;
-      box-shadow: 0 2px 8px rgba(91,91,214,0.2);
-    }
-    .message.assistant .bubble {
-      background: #fff;
+      background: var(--user-bubble-bg);
       color: var(--text);
       border: 1px solid var(--border);
-      border-bottom-left-radius: 4px;
+      border-bottom-right-radius: 3px;
+    }
+    .message.assistant .bubble {
+      background: transparent;
+      color: var(--text);
+      border: none;
+      padding: 2px 0;
+      border-radius: 0;
+      max-width: 92%;
+    }
+    .message.assistant .bubble.intercept {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
       box-shadow: var(--shadow-xs);
+      max-width: 92%;
     }
     .meta { font-size: 10px; color: var(--text-subtle); margin-top: 4px; }
     .typing {
-      display: inline-block;
-      padding: 12px 16px;
-      background: #fff;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 10px 14px;
+      background: var(--surface-2);
       border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      border-bottom-left-radius: 4px;
+      border-radius: var(--radius-md);
       color: var(--text-muted);
-      font-style: italic;
       font-size: 13px;
-      box-shadow: var(--shadow-xs);
     }
-    .typing::after { content: '...'; animation: dots 1.4s infinite; }
+    .typing::after { content: ''; animation: dots 1.4s infinite; }
     @keyframes dots {
-      0%, 20% { content: '.'; }
-      40% { content: '..'; }
-      60%, 100% { content: '...'; }
+      0%, 20% { content: '·'; letter-spacing: 0; }
+      40% { content: '··'; }
+      60%, 100% { content: '···'; }
     }
     .error { background: var(--error-soft) !important; border-color: #fecaca !important; color: #991b1b !important; }
 
     #chat-input-area {
-      padding: 12px 16px;
+      padding: 14px 16px 12px;
       border-top: 1px solid var(--border);
       flex-shrink: 0;
-      background: #fff;
+      background: var(--chat-bg);
     }
     #input-form {
       display: flex;
+      flex-direction: column;
       gap: 8px;
+    }
+    .composer-wrap {
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 10px 10px 10px 16px;
+      transition: all 0.15s;
+      box-shadow: var(--shadow-composer);
+    }
+    .composer-wrap:focus-within {
+      border-color: var(--accent);
+      background: #fff;
+      box-shadow: 0 0 0 3px var(--accent-glow), var(--shadow-composer);
     }
     #question-input {
       flex: 1;
-      background: #f4f4f7;
-      border: 1px solid var(--border);
+      background: transparent;
+      border: none;
       color: var(--text);
-      padding: 10px 14px;
-      border-radius: var(--radius-md);
-      font-size: 13px;
+      padding: 6px 0;
+      font-size: 14px;
       outline: none;
       font-family: var(--font-ui);
-      transition: all 0.2s;
+      line-height: 1.55;
     }
-    #question-input:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-glow); }
     #question-input:disabled { opacity: 0.5; }
     #question-input::placeholder { color: var(--text-subtle); }
     #submit-btn {
-      padding: 10px 22px;
+      width: 32px; height: 32px;
       background: var(--accent);
       color: #fff;
       border: none;
-      border-radius: var(--radius-md);
+      border-radius: 50%;
       font-size: 13px;
       cursor: pointer;
-      transition: all 0.2s;
+      transition: all 0.15s;
       font-weight: 600;
       font-family: var(--font-ui);
-      box-shadow: 0 1px 3px rgba(91,91,214,0.3);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      box-shadow: 0 2px 6px rgba(79,70,229,0.35);
     }
-    #submit-btn:hover:not(:disabled) { background: var(--accent-hover); box-shadow: 0 2px 12px rgba(91,91,214,0.4); transform: translateY(-1px); }
+    #submit-btn:hover:not(:disabled) { background: var(--accent-hover); box-shadow: 0 4px 12px rgba(79,70,229,0.45); transform: translateY(-1px); }
     #submit-btn:active:not(:disabled) { transform: translateY(0); }
-    #submit-btn:disabled { background: #e5e5ea; cursor: not-allowed; box-shadow: none; transform: none; }
+    #submit-btn:disabled { background: var(--surface-3); color: var(--text-subtle); cursor: not-allowed; box-shadow: none; transform: none; }
+    .composer-hint {
+      font-size: 10.5px;
+      color: var(--text-subtle);
+      text-align: center;
+      letter-spacing: 0.01em;
+    }
+    .composer-hint kbd {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0 4px;
+      color: var(--text-muted);
+    }
 
     /* ---- 状态栏 ---- */
     #status-bar {
-      background: var(--accent);
-      color: rgba(255,255,255,0.9);
-      padding: 3px 16px;
+      background: #18181b;
+      color: rgba(255,255,255,0.78);
+      padding: 0 14px;
       font-size: 11px;
       display: flex;
       justify-content: space-between;
       flex-shrink: 0;
       font-family: var(--font-mono);
-      height: 24px;
+      height: 22px;
       align-items: center;
+      letter-spacing: 0.01em;
     }
-    #status-bar .left, #status-bar .right { display: flex; gap: 14px; }
+    #status-bar .left, #status-bar .right { display: flex; gap: 14px; align-items: center; }
+    #status-bar .left span:first-child { color: rgba(255,255,255,0.95); }
 
     /* ---- 模态框 ---- */
     .modal-overlay {
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(20,20,40,0.12);
+      background: rgba(15,15,25,0.10);
       backdrop-filter: blur(6px);
       -webkit-backdrop-filter: blur(6px);
       display: flex;
@@ -468,11 +699,11 @@
       font-size: 16px;
       margin-bottom: 16px;
       color: var(--text);
-      font-weight: 700;
+      font-weight: 600;
     }
     .modal input[type="text"] {
       width: 100%;
-      background: #f4f4f7;
+      background: var(--surface-2);
       border: 1px solid var(--border);
       color: var(--text);
       padding: 10px 14px;
@@ -481,7 +712,7 @@
       font-family: var(--font-mono);
       outline: none;
       margin-bottom: 16px;
-      transition: all 0.2s;
+      transition: all 0.15s;
     }
     .modal input[type="text"]:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-glow); }
     .modal-actions {
@@ -497,7 +728,7 @@
       border: 1px solid var(--border-strong);
       background: #fff;
       color: var(--text-muted);
-      transition: all 0.2s;
+      transition: all 0.15s;
       font-family: var(--font-ui);
       font-weight: 500;
     }
@@ -505,7 +736,7 @@
       background: var(--accent);
       color: #fff;
       border-color: var(--accent);
-      box-shadow: 0 1px 3px rgba(91,91,214,0.3);
+      box-shadow: 0 1px 3px rgba(79,70,229,0.3);
     }
     .modal-btn.primary:hover { background: var(--accent-hover); }
     .modal-btn:hover { border-color: var(--text-muted); color: var(--text); }
@@ -514,7 +745,7 @@
     #diff-overlay {
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(20,20,40,0.15);
+      background: rgba(15,15,25,0.14);
       backdrop-filter: blur(6px);
       -webkit-backdrop-filter: blur(6px);
       display: none;
@@ -536,7 +767,7 @@
       box-shadow: var(--shadow-lg);
     }
     #diff-header {
-      padding: 14px 24px;
+      padding: 12px 20px;
       background: #fff;
       border-bottom: 1px solid var(--border);
       display: flex;
@@ -545,8 +776,8 @@
       flex-shrink: 0;
     }
     #diff-title {
-      font-size: 15px;
-      font-weight: 700;
+      font-size: 14px;
+      font-weight: 600;
       color: var(--text);
       display: flex;
       align-items: center;
@@ -556,7 +787,7 @@
       background: var(--warning);
       color: #fff;
       font-size: 11px;
-      padding: 3px 10px;
+      padding: 2px 9px;
       border-radius: 20px;
       font-weight: 600;
     }
@@ -564,13 +795,13 @@
       display: flex;
       gap: 6px;
       overflow-x: auto;
-      padding: 10px 24px;
-      background: #fafafb;
+      padding: 10px 20px;
+      background: var(--surface);
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
     }
     .diff-file-tab {
-      padding: 6px 14px;
+      padding: 5px 12px;
       font-size: 12px;
       background: #fff;
       border: 1px solid var(--border);
@@ -578,10 +809,12 @@
       cursor: pointer;
       color: var(--text-muted);
       white-space: nowrap;
-      transition: all 0.15s;
+      transition: all 0.12s;
       font-weight: 500;
+      display: inline-flex;
+      align-items: center;
     }
-    .diff-file-tab:hover { color: var(--text); border-color: var(--text-muted); box-shadow: var(--shadow-xs); }
+    .diff-file-tab:hover { color: var(--text); border-color: var(--border-strong); box-shadow: var(--shadow-xs); }
     .diff-file-tab.active {
       background: var(--accent);
       color: #fff;
@@ -594,6 +827,7 @@
       margin-left: 6px;
       background: rgba(255,255,255,0.2);
     }
+    .diff-file-tab:not(.active) .action-tag { background: var(--surface-2); color: var(--text-muted); }
     #diff-editor-container {
       flex: 1;
       position: relative;
@@ -604,7 +838,7 @@
       top: 0; left: 0; right: 0; bottom: 0;
     }
     #diff-footer {
-      padding: 16px 24px;
+      padding: 14px 20px;
       background: #fff;
       border-top: 1px solid var(--border);
       display: flex;
@@ -615,13 +849,14 @@
     #diff-hint {
       font-size: 12px;
       color: var(--text-muted);
+      font-family: var(--font-mono);
     }
     #diff-actions {
       display: flex;
       gap: 10px;
     }
     .diff-btn {
-      padding: 10px 28px;
+      padding: 9px 24px;
       border-radius: var(--radius-md);
       font-size: 13px;
       cursor: pointer;
@@ -629,7 +864,7 @@
       background: #fff;
       color: var(--text);
       font-weight: 600;
-      transition: all 0.15s;
+      transition: all 0.12s;
       font-family: var(--font-ui);
     }
     .diff-btn:hover:not(:disabled) { border-color: var(--text-muted); box-shadow: var(--shadow-sm); }
@@ -655,21 +890,199 @@
       color: var(--text-subtle);
       font-size: 13px;
     }
+
+    /* ---- 任务控制条（JS 内联样式为主，此处补充圆角对齐） ---- */
+    #task-controls { border-radius: var(--radius-md) !important; }
+
+    /* ---- 历史会话面板 ---- */
+    #sessions-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(15,15,25,0.14);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1200;
+    }
+    #sessions-overlay.active { display: flex; }
+    #sessions-modal {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      width: 560px;
+      max-width: 92vw;
+      max-height: 76vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: var(--shadow-lg);
+    }
+    #sessions-header {
+      padding: 16px 20px 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    #sessions-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #sessions-title .sessions-count {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-muted);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 1px 9px;
+    }
+    #sessions-close-btn {
+      width: 28px; height: 28px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: #fff;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 13px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+    }
+    #sessions-close-btn:hover { border-color: var(--border-strong); color: var(--text); background: var(--surface-2); }
+    #sessions-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 12px;
+    }
+    #sessions-list::-webkit-scrollbar { width: 10px; }
+    #sessions-list::-webkit-scrollbar-thumb { background: #cfcfd6; border: 3px solid transparent; border-radius: 8px; background-clip: padding-box; }
+    .session-card {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+      background: #fff;
+      cursor: pointer;
+      transition: all 0.15s;
+      margin-bottom: 8px;
+    }
+    .session-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); background: var(--surface); }
+    .session-card.current { border-color: var(--accent); background: var(--accent-soft); }
+    .session-card .session-body { flex: 1; min-width: 0; }
+    .session-card .session-preview {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 3px;
+    }
+    .session-card .session-meta {
+      font-size: 11px;
+      color: var(--text-subtle);
+      font-family: var(--font-mono);
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .session-card .session-tag {
+      font-size: 10px;
+      color: var(--accent);
+      background: #fff;
+      border: 1px solid var(--accent);
+      border-radius: 4px;
+      padding: 0 5px;
+      font-weight: 600;
+    }
+    .session-delete-btn {
+      width: 30px; height: 30px;
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      background: transparent;
+      color: var(--text-subtle);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all 0.15s;
+    }
+    .session-delete-btn:hover { color: var(--error); background: var(--error-soft); border-color: #fecaca; }
+    .sessions-empty {
+      padding: 56px 16px;
+      color: var(--text-subtle);
+      font-size: 13px;
+      text-align: center;
+      line-height: 1.8;
+    }
+    .sessions-empty .empty-icon { display: block; margin-bottom: 8px; opacity: 0.45; }
+
+    @media (max-width: 1100px) {
+      #main-body { grid-template-columns: 48px 220px 1fr 340px; }
+    }
+    @media (max-width: 920px) {
+      #main-body { grid-template-columns: 48px 190px 1fr 300px; }
+      #project-path-input { width: 180px; }
+    }
+    @media (max-width: 760px) {
+      #activity-bar { display: none; }
+      #main-body { grid-template-columns: 190px 1fr 280px; }
+      #session-info { display: none; }
+    }
   </style>
 </head>
 <body>
   <header>
-    <h1><span class="logo-dot"></span>CodeAgent</h1>
+    <h1><span class="logo-dot"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg></span>CodeAgent</h1>
     <span class="subtitle" id="mode-label">IDE 模式</span>
     <button id="open-project-btn">打开项目</button>
     <input type="text" id="project-path-input" placeholder="或手动输入项目路径，如 d:/myproject" style="display:none;">
     <button id="open-path-btn" style="display:none;">打开</button>
     <div class="header-spacer"></div>
     <span id="session-info">会话：加载中</span>
+    <button id="history-btn" title="查看历史会话">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      历史
+    </button>
     <button id="clear-btn" title="清空当前会话">新会话</button>
   </header>
 
   <div id="main-body">
+    <!-- 最左：Activity Bar -->
+    <div id="activity-bar">
+      <div class="activity-icon active" title="资源管理器">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
+      </div>
+      <div class="activity-icon" title="搜索">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      </div>
+      <div class="activity-icon" title="版本控制">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+      </div>
+      <div class="activity-icon" title="扩展">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
+      </div>
+      <div class="activity-spacer"></div>
+      <div class="activity-icon" title="账户">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M6 21v-1a6 6 0 0 1 12 0v1"/></svg>
+      </div>
+      <div class="activity-icon" title="设置">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </div>
+    </div>
+
     <!-- 左：文件树 -->
     <div id="sidebar">
       <div id="sidebar-header">
@@ -677,7 +1090,7 @@
         <span class="project-name" id="project-name-display"></span>
       </div>
       <div id="tree-container">
-        <div class="tree-empty"><span class="empty-icon">📁</span>点击「打开项目」选择目录</div>
+        <div class="tree-empty"><span class="empty-icon"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#c5c5cf" stroke-width="1.5" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg></span>点击「打开项目」选择目录</div>
       </div>
     </div>
 
@@ -686,9 +1099,24 @@
       <div id="editor-tabs"></div>
       <div id="editor-container">
         <div id="editor-empty">
-          <div class="empty-icon-lg">📄</div>
-          <div>暂无打开的文件</div>
-          <div class="hint">从左侧文件树点击文件，或让 Agent 修改代码</div>
+          <div class="welcome">
+            <div class="welcome-logo">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>
+            </div>
+            <div class="welcome-title">欢迎使用 CodeAgent</div>
+            <div class="welcome-sub">从左侧打开文件，或在右侧让 AI 帮你写代码</div>
+          </div>
+          <div class="shortcut-list">
+            <div class="shortcut" id="sc-open">
+              <span>打开项目</span><kbd>Ctrl+O</kbd>
+            </div>
+            <div class="shortcut" id="sc-save">
+              <span>保存当前文件</span><kbd>Ctrl+S</kbd>
+            </div>
+            <div class="shortcut" id="sc-new">
+              <span>开启新会话</span><kbd>Ctrl+K</kbd>
+            </div>
+          </div>
         </div>
         <div id="monaco-editor" style="display:none;"></div>
       </div>
@@ -696,7 +1124,11 @@
 
     <!-- 右：AI Chat -->
     <div id="chat-pane">
-      <div id="chat-header"><span class="chat-header-dot"></span>AI 助手</div>
+      <div id="chat-header">
+        <span class="chat-header-dot"></span>
+        <span>Chat</span>
+        <span class="chat-model-tag">CodeAgent</span>
+      </div>
       <div id="chat-area">
         <div class="message assistant">
           <div class="bubble">你好！打开项目后，我可以帮你扫描和修改代码。直接提问即可。</div>
@@ -704,8 +1136,13 @@
       </div>
       <div id="chat-input-area">
         <form id="input-form">
-          <input type="text" id="question-input" placeholder="输入问题，或让 Agent 修改代码..." autocomplete="off" autofocus>
-          <button type="submit" id="submit-btn">发送</button>
+          <div class="composer-wrap">
+            <input type="text" id="question-input" placeholder="问点什么，或让 Agent 修改代码..." autocomplete="off" autofocus>
+            <button type="submit" id="submit-btn" title="发送">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
+            </button>
+          </div>
+          <div class="composer-hint"><kbd>Enter</kbd> 发送 · Agent 修改前会先弹出预览</div>
         </form>
       </div>
     </div>
@@ -746,6 +1183,23 @@
     </div>
   </div>
 
+  <!-- 历史会话管理面板 -->
+  <div id="sessions-overlay">
+    <div id="sessions-modal">
+      <div id="sessions-header">
+        <div id="sessions-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          历史会话
+          <span class="sessions-count" id="sessions-count">0 个</span>
+        </div>
+        <button id="sessions-close-btn" title="关闭">✕</button>
+      </div>
+      <div id="sessions-list">
+        <div class="sessions-empty">加载中...</div>
+      </div>
+    </div>
+  </div>
+
   <!-- Monaco Editor CDN -->
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
   <script>
@@ -767,6 +1221,16 @@
     const statusProject = document.getElementById('status-project');
     const statusLang = document.getElementById('status-lang');
     const statusEncoding = document.getElementById('status-encoding');
+
+    // ---- 文件树 SVG 图标（chevron + 文件夹/文件，Cursor 风格） ----
+    const SVG_CHEVRON_RIGHT = '<svg class="tree-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>';
+    const SVG_CHEVRON_DOWN = '<svg class="tree-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
+    const SVG_FOLDER_CLOSED = '<svg class="tree-folder" viewBox="0 0 24 24" fill="#e9bd76" stroke="#d19d55" stroke-width="1.4" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>';
+    const SVG_FOLDER_OPEN = '<svg class="tree-folder" viewBox="0 0 24 24" fill="#f3d9ab" stroke="#d19d55" stroke-width="1.4" stroke-linejoin="round"><path d="m6 14 1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.93a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>';
+    const SVG_FILE = '<svg class="tree-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>';
+    const SVG_LOADING = '<svg class="tree-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.2-8.56"/></svg>';
+    const TREE_ICON_DIR_CLOSED = SVG_CHEVRON_RIGHT + SVG_FOLDER_CLOSED;
+    const TREE_ICON_DIR_OPEN = SVG_CHEVRON_DOWN + SVG_FOLDER_OPEN;
 
     // ---- session_id 管理 ----
     function getSessionId() {
@@ -811,17 +1275,17 @@
         rules: [],
         colors: {
           'editor.background': '#ffffff',
-          'editor.foreground': '#1a1a2e',
-          'editorLineNumber.foreground': '#c0c0cc',
-          'editorLineNumber.activeForeground': '#6e6e80',
-          'editor.lineHighlightBackground': '#f9f9fb',
-          'editor.lineHighlightBorder': '#f0f0f4',
-          'editor.selectionBackground': '#ededf8',
-          'editor.inactiveSelectionBackground': '#f4f4f7',
-          'editorCursor.foreground': '#5b5bd6',
-          'editor.findMatchBackground': '#ededf8',
-          'editorIndentGuide.background': '#f0f0f4',
-          'editorIndentGuide.activeBackground': '#d8d8de',
+          'editor.foreground': '#18181b',
+          'editorLineNumber.foreground': '#c8c8d0',
+          'editorLineNumber.activeForeground': '#6b6b76',
+          'editor.lineHighlightBackground': '#fbfbfd',
+          'editor.lineHighlightBorder': '#f2f2f5',
+          'editor.selectionBackground': '#eef2ff',
+          'editor.inactiveSelectionBackground': '#f5f5f7',
+          'editorCursor.foreground': '#4f46e5',
+          'editor.findMatchBackground': '#eef2ff',
+          'editorIndentGuide.background': '#f2f2f5',
+          'editorIndentGuide.activeBackground': '#d8d8dd',
         }
       });
       // 创建编辑器实例
@@ -874,17 +1338,17 @@
         div.dataset.type = item.type;
 
         if (item.type === 'dir') {
-          div.innerHTML = `<span class="tree-icon">📁</span><span class="tree-name">${item.name}</span>`;
+          div.innerHTML = `<span class="tree-icon">${TREE_ICON_DIR_CLOSED}</span><span class="tree-name">${item.name}</span>`;
           div.addEventListener('click', async (e) => {
             e.stopPropagation();
             const childWrapper = div.nextElementSibling;
             if (childWrapper && childWrapper.tagName === 'DIV' && childWrapper.classList.contains('tree-children')) {
               // 已加载，切换显示
               childWrapper.style.display = childWrapper.style.display === 'none' ? 'block' : 'none';
-              div.querySelector('.tree-icon').textContent = childWrapper.style.display === 'none' ? '📁' : '📂';
+              div.querySelector('.tree-icon').innerHTML = childWrapper.style.display === 'none' ? TREE_ICON_DIR_CLOSED : TREE_ICON_DIR_OPEN;
             } else if (item.children === null || (item.expandable && !item._loaded)) {
               // 懒加载
-              div.querySelector('.tree-icon').textContent = '⏳';
+              div.querySelector('.tree-icon').innerHTML = SVG_LOADING;
               const sub = await loadTree(item.path, 1);
               if (sub && !sub.error) {
                 item.children = sub.children;
@@ -893,9 +1357,9 @@
                 newWrapper.className = 'tree-children';
                 renderTree(sub, newWrapper, depth + 1);
                 div.after(newWrapper);
-                div.querySelector('.tree-icon').textContent = '📂';
+                div.querySelector('.tree-icon').innerHTML = TREE_ICON_DIR_OPEN;
               } else {
-                div.querySelector('.tree-icon').textContent = '📁';
+                div.querySelector('.tree-icon').innerHTML = TREE_ICON_DIR_CLOSED;
               }
             } else {
               // 已有 children，渲染
@@ -903,7 +1367,7 @@
               newWrapper.className = 'tree-children';
               renderTree({ children: item.children }, newWrapper, depth + 1);
               div.after(newWrapper);
-              div.querySelector('.tree-icon').textContent = '📂';
+              div.querySelector('.tree-icon').innerHTML = TREE_ICON_DIR_OPEN;
             }
           });
           // 如果已有 children（首次加载的深度内），预渲染
@@ -917,11 +1381,11 @@
           }
           // 已有 children 但还没渲染
           if (item.children && item.children.length > 0) {
-            div.querySelector('.tree-icon').textContent = '📂';
+            div.querySelector('.tree-icon').innerHTML = TREE_ICON_DIR_OPEN;
           }
         } else {
           const sizeStr = item.size < 1024 ? item.size + 'B' : (item.size / 1024).toFixed(1) + 'KB';
-          div.innerHTML = `<span class="tree-icon">📄</span><span class="tree-name">${item.name}</span>`;
+          div.innerHTML = `<span class="tree-icon">${SVG_FILE}</span><span class="tree-name">${item.name}</span>`;
           div.title = `${item.path} (${sizeStr})`;
           div.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -1166,7 +1630,7 @@
 
         // 正文
         const desc = document.createElement('div');
-        desc.style.cssText = 'font-size:13px;line-height:1.6;margin-bottom:12px;color:#1a1a2e;font-family:var(--font-ui);';
+        desc.style.cssText = 'font-size:13px;line-height:1.6;margin-bottom:12px;color:#18181b;font-family:var(--font-ui);';
         desc.textContent = content.split('\n').filter(l => !l.startsWith('⚠️')).join('\n').trim();
         bubble.appendChild(desc);
 
@@ -1176,7 +1640,7 @@
 
         const openBtn = document.createElement('button');
         openBtn.textContent = '📁 打开项目';
-        openBtn.style.cssText = 'padding:7px 18px;border-radius:6px;border:1px solid #5b5bd6;background:#5b5bd6;color:#fff;cursor:pointer;font-size:13px;font-weight:600;font-family:var(--font-ui);box-shadow:0 1px 3px rgba(91,91,214,0.3);transition:all 0.2s;';
+        openBtn.style.cssText = 'padding:7px 18px;border-radius:6px;border:1px solid #4f46e5;background:#4f46e5;color:#fff;cursor:pointer;font-size:13px;font-weight:600;font-family:var(--font-ui);box-shadow:0 1px 3px rgba(79,70,229,0.3);transition:all 0.2s;';
         openBtn.addEventListener('click', () => {
           openProjectBtn.click();
         });
@@ -1238,6 +1702,15 @@
         }
         const data = await resp.json();
         currentTaskId = data.task_id;
+
+        // 同步模式（chitchat/weather/kb_search/intercept）：后端直接返回 answer，无需轮询
+        if (!currentTaskId || data.mode !== 'async') {
+          removeTyping();
+          const msg = appendMessage('assistant', data.answer || '（无返回）');
+          await checkPendingModifications();
+          refreshModifiedFiles(data);
+          return;
+        }
 
         // 2. 显示任务控制条（暂停/取消按钮）
         showTaskControls(currentTaskId);
@@ -1301,17 +1774,17 @@
         removeTaskControls();  // 先清理旧的
         const bar = document.createElement('div');
         bar.id = 'task-controls';
-        bar.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 14px;margin:10px 0;background:#f9f9fb;border-radius:8px;border:1px solid #ececef;font-size:13px;';
+        bar.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 14px;margin:10px 0;background:#fbfbfd;border-radius:8px;border:1px solid #ececef;font-size:13px;';
 
         const status = document.createElement('span');
         status.id = 'task-status-text';
         status.textContent = '⏳ 思考中...';
-        status.style.cssText = 'flex:1;color:#6e6e80;';
+        status.style.cssText = 'flex:1;color:#6b6b76;';
 
         const pauseBtn = document.createElement('button');
         pauseBtn.id = 'task-pause-btn';
         pauseBtn.textContent = '⏸ 暂停';
-        pauseBtn.style.cssText = 'padding:5px 14px;border-radius:6px;border:1px solid #d8d8de;background:#fff;color:#6e6e80;cursor:pointer;font-size:12px;font-family:var(--font-ui);font-weight:500;transition:all 0.2s;';
+        pauseBtn.style.cssText = 'padding:5px 14px;border-radius:6px;border:1px solid #d8d8dd;background:#fff;color:#6b6b76;cursor:pointer;font-size:12px;font-family:var(--font-ui);font-weight:500;transition:all 0.2s;';
         pauseBtn.addEventListener('click', async () => {
           try {
             const r = await fetch(`/api/task/${taskId}/pause`, { method: 'POST' });
@@ -1327,7 +1800,7 @@
         const resumeBtn = document.createElement('button');
         resumeBtn.id = 'task-resume-btn';
         resumeBtn.textContent = '▶ 继续';
-        resumeBtn.style.cssText = 'padding:5px 14px;border-radius:6px;border:1px solid #5b5bd6;background:#5b5bd6;color:#fff;cursor:pointer;font-size:12px;font-family:var(--font-ui);font-weight:500;box-shadow:0 1px 3px rgba(91,91,214,0.3);transition:all 0.2s;';
+        resumeBtn.style.cssText = 'padding:5px 14px;border-radius:6px;border:1px solid #4f46e5;background:#4f46e5;color:#fff;cursor:pointer;font-size:12px;font-family:var(--font-ui);font-weight:500;box-shadow:0 1px 3px rgba(79,70,229,0.3);transition:all 0.2s;';
         resumeBtn.style.display = 'none';
         resumeBtn.addEventListener('click', async () => {
           try {
@@ -1664,6 +2137,160 @@
       }
     }
 
+    // ---- 历史会话管理 ----
+    const historyBtn = document.getElementById('history-btn');
+    const sessionsOverlay = document.getElementById('sessions-overlay');
+    const sessionsList = document.getElementById('sessions-list');
+    const sessionsCount = document.getElementById('sessions-count');
+    const sessionsCloseBtn = document.getElementById('sessions-close-btn');
+
+    function formatSessionTime(ts) {
+      if (!ts) return '';
+      const d = new Date(ts * 1000);
+      const diff = (Date.now() - d.getTime()) / 1000;
+      if (diff < 60) return '刚刚';
+      if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`;
+      if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`;
+      if (diff < 172800) return '昨天';
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    async function openSessionsPanel() {
+      sessionsOverlay.classList.add('active');
+      await loadSessionsList();
+    }
+
+    function closeSessionsPanel() {
+      sessionsOverlay.classList.remove('active');
+    }
+
+    async function loadSessionsList() {
+      sessionsList.innerHTML = '<div class="sessions-empty">加载中...</div>';
+      try {
+        const resp = await fetch('/api/sessions');
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        sessionsCount.textContent = `${data.count} 个`;
+        sessionsList.innerHTML = '';
+        if (!data.sessions.length) {
+          sessionsList.innerHTML = '<div class="sessions-empty"><span class="empty-icon">🕐</span>暂无历史会话</div>';
+          return;
+        }
+        for (const s of data.sessions) {
+          sessionsList.appendChild(buildSessionCard(s));
+        }
+      } catch (e) {
+        sessionsList.innerHTML = `<div class="sessions-empty">加载失败: ${e.message}</div>`;
+      }
+    }
+
+    function buildSessionCard(s) {
+      const card = document.createElement('div');
+      card.className = 'session-card' + (s.session_id === currentSessionId ? ' current' : '');
+
+      const body = document.createElement('div');
+      body.className = 'session-body';
+
+      const preview = document.createElement('div');
+      preview.className = 'session-preview';
+      preview.textContent = s.preview || '（无预览）';
+
+      const meta = document.createElement('div');
+      meta.className = 'session-meta';
+      const timeSpan = document.createElement('span');
+      timeSpan.textContent = `${formatSessionTime(s.last_active_at)} · ${s.message_count} 条消息`;
+      meta.appendChild(timeSpan);
+
+      if (s.session_id === currentSessionId) {
+        const tag = document.createElement('span');
+        tag.className = 'session-tag';
+        tag.textContent = '当前';
+        meta.appendChild(tag);
+      }
+
+      body.appendChild(preview);
+      body.appendChild(meta);
+
+      const delBtn = document.createElement('button');
+      delBtn.className = 'session-delete-btn';
+      delBtn.title = '删除此会话';
+      delBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+      delBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await deleteSessionById(s.session_id, card);
+      });
+
+      card.appendChild(body);
+      card.appendChild(delBtn);
+
+      // 点击卡片：切换到该会话并加载历史消息
+      card.addEventListener('click', () => switchToSession(s.session_id));
+
+      return card;
+    }
+
+    async function deleteSessionById(sessionId, cardEl) {
+      const previewText = cardEl.querySelector('.session-preview').textContent;
+      if (!confirm(`确定删除该会话吗？\n\n「${previewText.slice(0, 40)}」\n\n删除后不可恢复。`)) return;
+      try {
+        const resp = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        cardEl.remove();
+        const remaining = sessionsList.querySelectorAll('.session-card').length;
+        sessionsCount.textContent = `${remaining} 个`;
+        if (remaining === 0) {
+          sessionsList.innerHTML = '<div class="sessions-empty"><span class="empty-icon">🕐</span>暂无历史会话</div>';
+        }
+        if (sessionId === currentSessionId) {
+          statusProject.textContent = '🗑️ 当前会话历史已删除';
+          setTimeout(() => {
+            statusProject.textContent = `● 工作区: ${projectNameDisplay.textContent}`;
+          }, 3000);
+        }
+      } catch (e) {
+        alert('删除失败: ' + e.message);
+      }
+    }
+
+    async function switchToSession(sessionId) {
+      try {
+        const resp = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/messages`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+
+        // 切换当前会话（后续对话沿用该会话历史）
+        currentSessionId = sessionId;
+        localStorage.setItem('rag_session_id', sessionId);
+        sessionInfo.textContent = `会话：${sessionId}`;
+
+        // 渲染历史消息
+        chatArea.innerHTML = '';
+        if (!data.messages.length) {
+          appendMessage('assistant', '该会话没有历史消息。');
+        } else {
+          for (const m of data.messages) {
+            appendMessage(m.role === 'user' ? 'user' : 'assistant', m.content);
+          }
+        }
+        closeSessionsPanel();
+        questionInput.focus();
+      } catch (e) {
+        alert('加载会话失败: ' + e.message);
+      }
+    }
+
+    historyBtn.addEventListener('click', openSessionsPanel);
+    sessionsCloseBtn.addEventListener('click', closeSessionsPanel);
+    sessionsOverlay.addEventListener('click', (e) => {
+      if (e.target === sessionsOverlay) closeSessionsPanel();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && sessionsOverlay.classList.contains('active')) {
+        closeSessionsPanel();
+      }
+    });
+
     // ---- 页面加载时检查健康状态 ----
     fetch('/api/health')
       .then(r => r.json())
@@ -1673,6 +2300,27 @@
         }
       })
       .catch(() => {});
+
+    // ---- 欢迎屏快捷方式（仅新增绑定，不影响既有逻辑） ----
+    (function () {
+      const scOpen = document.getElementById('sc-open');
+      const scSave = document.getElementById('sc-save');
+      const scNew = document.getElementById('sc-new');
+      if (scOpen) scOpen.addEventListener('click', () => openProjectBtn.click());
+      if (scSave) scSave.addEventListener('click', () => { if (activeTab) saveCurrentFile(); });
+      if (scNew) scNew.addEventListener('click', () => clearBtn.click());
+      document.addEventListener('keydown', (e) => {
+        if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
+        const k = e.key.toLowerCase();
+        if (k === 'o') {
+          e.preventDefault();
+          openProjectBtn.click();
+        } else if (k === 'k') {
+          e.preventDefault();
+          clearBtn.click();
+        }
+      });
+    })();
   </script>
 </body>
 </html>

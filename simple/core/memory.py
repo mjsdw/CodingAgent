@@ -55,6 +55,16 @@ class MemoryStore(ABC):
     def clear(self, session_id: str) -> None:
         """清空指定会话的历史。"""
 
+    @abstractmethod
+    def list_sessions(self) -> list[dict]:
+        """列出所有会话（按最近活跃时间倒序）。
+
+        :return: [{"session_id": str, "message_count": int,
+                   "created_at": float, "last_active_at": float,
+                   "preview": str}, ...]
+                 preview 取该会话第一条 user 消息（截断 80 字符）
+        """
+
     def add_turn(self, session_id: str, user_question: str, assistant_answer: str) -> None:
         """便捷方法：一次性存入一轮对话（user + assistant）。"""
         self.add_message(session_id, "user", user_question)
@@ -90,6 +100,23 @@ class InMemoryStore(MemoryStore):
     def clear(self, session_id: str) -> None:
         with self._lock:
             self._store.pop(session_id, None)
+
+    def list_sessions(self) -> list[dict]:
+        with self._lock:
+            result = []
+            for sid, msgs in self._store.items():
+                if not msgs:
+                    continue
+                preview = next((m["content"] for m in msgs if m["role"] == "user"), "")
+                result.append({
+                    "session_id": sid,
+                    "message_count": len(msgs),
+                    "created_at": msgs[0]["timestamp"],
+                    "last_active_at": msgs[-1]["timestamp"],
+                    "preview": preview[:80],
+                })
+        result.sort(key=lambda s: s["last_active_at"], reverse=True)
+        return result
 
 
 # ===================== SQLite 持久化实现 =====================
@@ -176,6 +203,35 @@ class SQLiteStore(MemoryStore):
         with self._lock:
             with self._get_conn() as conn:
                 conn.execute("DELETE FROM conversations WHERE session_id = ?", (session_id,))
+
+    def list_sessions(self) -> list[dict]:
+        with self._lock:
+            with self._get_conn() as conn:
+                rows = conn.execute("""
+                    SELECT session_id,
+                           COUNT(*) AS message_count,
+                           MIN(timestamp) AS created_at,
+                           MAX(timestamp) AS last_active_at
+                    FROM conversations
+                    GROUP BY session_id
+                    ORDER BY last_active_at DESC
+                """).fetchall()
+                result = []
+                for r in rows:
+                    # 预览：该会话第一条 user 消息
+                    preview_row = conn.execute("""
+                        SELECT content FROM conversations
+                        WHERE session_id = ? AND role = 'user'
+                        ORDER BY timestamp ASC LIMIT 1
+                    """, (r["session_id"],)).fetchone()
+                    result.append({
+                        "session_id": r["session_id"],
+                        "message_count": r["message_count"],
+                        "created_at": r["created_at"],
+                        "last_active_at": r["last_active_at"],
+                        "preview": (preview_row["content"][:80] if preview_row else ""),
+                    })
+        return result
 
 
 # ===================== 工厂单例 =====================
