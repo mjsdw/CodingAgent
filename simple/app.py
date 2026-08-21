@@ -24,6 +24,7 @@ import re
 from fastapi import FastAPI, UploadFile, File, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from config import (
@@ -283,16 +284,18 @@ async def chat(req: ChatRequest):
     history = []
     if ENABLE_MEMORY and session_id:
         store = get_memory_store()
-        history = store.get_history(session_id)
+        history = await run_in_threadpool(store.get_history, session_id)
 
     ctx = SkillContext(question=question, session_id=session_id, history=history)
-    skill = _orch.router.classify(question, ctx)
+    # LLM 路由最长可阻塞 60s，放线程池执行，避免卡死事件循环
+    skill = await run_in_threadpool(_orch.router.classify, question, ctx)
 
     # 简单 Skill：同步执行，直接返回结果
+    # Skill 内部含 LLM 调用（数秒~数十秒），同样放线程池执行
     if skill.name in ("chitchat", "weather", "kb_search", "intercept"):
-        answer, sources = _orch.query(
-            question, session_id=session_id,
-            pre_classified_skill=skill,
+        answer, sources = await run_in_threadpool(
+            _orch.query, question,
+            session_id=session_id, pre_classified_skill=skill,
         )
         sources_data = []
         for src in sources:
