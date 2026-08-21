@@ -6,13 +6,16 @@
 #   2. 撤销最近一次修改，恢复上一个快照（undo_last）
 #   3. 获取文件修改历史列表（get_history）
 #
-# 快照存储结构（按会话隔离）：
-#   {CODE_HISTORY_DIR}/{session_id}/{filename}/{序号:03d}.snapshot      # 文件内容快照
-#   {CODE_HISTORY_DIR}/{session_id}/{filename}/{序号:03d}.meta.json     # 元数据
+# 快照存储结构（按会话 + 完整路径 hash 隔离）：
+#   {CODE_HISTORY_DIR}/{session_id}/{filename}.{path_hash}/{序号:03d}.snapshot      # 文件内容快照
+#   {CODE_HISTORY_DIR}/{session_id}/{filename}.{path_hash}/{序号:03d}.meta.json     # 元数据
+#   path_hash = 完整路径的 md5 前 12 位：不同目录的同名文件快照互不混存
 #
 # 撤销机制：栈式撤销，每次 undo 取最新快照恢复并删除该快照。
 
+import hashlib
 import json
+import re
 import time
 from pathlib import Path
 
@@ -22,9 +25,13 @@ from tools.code_tool.path_security import _validate_path
 
 
 def _get_history_dir(filepath: str, session_id: str = None) -> Path:
-    """获取文件对应的历史备份目录（按会话隔离）。
+    """获取文件对应的历史备份目录（按会话 + 完整路径隔离）。
 
-    存储结构：{CODE_HISTORY_DIR}/{session_id}/{filename}/
+    存储结构：{CODE_HISTORY_DIR}/{session_id}/{filename}.{path_hash}/
+    目录名带完整路径的 12 位 hash：
+      - 不同目录下的同名文件（如 a/main.py 与 b/main.py）hash 不同，快照互不混存
+      - 保留文件名前缀，便于人工排查快照目录归属
+
     不同 session 的快照互不干扰，避免跨会话撤销污染。
 
     :param session_id: 会话 ID（None 时 fallback 到 "default"）
@@ -32,10 +39,11 @@ def _get_history_dir(filepath: str, session_id: str = None) -> Path:
     p = Path(filepath).resolve()
     sid = session_id or "default"
     # 安全化 session_id：只允许字母数字._-，防止路径穿越
-    import re
     safe_sid = re.sub(r"[^a-zA-Z0-9._-]", "_", sid)
+    # 完整路径 hash：区分同名文件（仅用 p.name 会导致不同目录同名文件快照混存、undo 交叉污染）
+    path_hash = hashlib.md5(str(p).encode("utf-8")).hexdigest()[:12]
     history_base = Path(CODE_HISTORY_DIR).resolve()
-    file_history = history_base / safe_sid / p.name
+    file_history = history_base / safe_sid / f"{p.name}.{path_hash}"
     file_history.mkdir(parents=True, exist_ok=True)
     return file_history
 
@@ -43,8 +51,8 @@ def _get_history_dir(filepath: str, session_id: str = None) -> Path:
 def _create_snapshot(filepath: str, action_desc: str, session_id: str = None) -> int:
     """修改前创建快照，返回 snapshot_id。
 
-    快照存储在 {CODE_HISTORY_DIR}/{session_id}/{filename}/{序号}.snapshot
-    元数据存储在 {CODE_HISTORY_DIR}/{session_id}/{filename}/{序号}.meta.json
+    快照存储在 {CODE_HISTORY_DIR}/{session_id}/{filename}.{path_hash}/{序号}.snapshot
+    元数据存储在 {CODE_HISTORY_DIR}/{session_id}/{filename}.{path_hash}/{序号}.meta.json
     """
     p = _validate_path(filepath, session_id)
     history_dir = _get_history_dir(filepath, session_id)
