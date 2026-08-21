@@ -20,12 +20,15 @@
 #   2. 暂停是"软"的：用 Event.wait() 阻塞等待，不自旋，不占 CPU
 #   3. 取消是"硬"的：立即响应（cancel 时清除 paused，让阻塞的 wait() 立即返回）
 #   4. 线程安全：用 threading.Event + threading.Lock 保护状态
+#   5. 生命周期：任务到达终态后延迟 TASK_RETENTION_SECONDS 秒自动移除（防注册表泄漏）
 
 import threading
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
+
+from config import TASK_RETENTION_SECONDS
 
 
 class TaskState(str, Enum):
@@ -222,9 +225,25 @@ def get_task(task_id: str) -> Optional[TaskControl]:
 
 
 def remove_task(task_id: str):
-    """任务完成后从注册表移除（可选，防内存泄漏）。"""
+    """从注册表移除任务（由 _schedule_removal 延迟调用，防内存泄漏）。"""
     with _TASKS_LOCK:
         _TASKS.pop(task_id, None)
+
+
+def _schedule_removal(tc: TaskControl):
+    """任务到达终态后，延迟从注册表移除 TaskControl。
+
+    不能立即移除：前端需要轮询终态（done/error/cancelled）拿最终结果，
+    立即移除会导致 /api/task/{id}/status 返回 404。
+    保留 TASK_RETENTION_SECONDS 秒后自动清理，防止注册表无限增长。
+    """
+    timer = threading.Timer(
+        TASK_RETENTION_SECONDS,
+        remove_task,
+        args=(tc.task_id,),
+    )
+    timer.daemon = True   # 不阻塞进程退出
+    timer.start()
 
 
 def run_task(tc: TaskControl, orch, question: str, session_id: str):
@@ -250,3 +269,6 @@ def run_task(tc: TaskControl, orch, question: str, session_id: str):
     except Exception as e:
         tc.mark_error(str(e))
         print(f"❌ [TaskManager] 任务 {tc.task_id} 出错: {e}")
+    finally:
+        # 无论正常完成/取消/异常，都延迟清理注册表条目（防 TaskControl 泄漏）
+        _schedule_removal(tc)

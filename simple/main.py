@@ -36,6 +36,7 @@ def run_cli():
 #   python main.py --web    # 启动 FastAPI Web 服务
 # 马杰
 def main():
+    # 帅哥
     if "--web" in sys.argv:
         # Web 模式
         from app import run_web
