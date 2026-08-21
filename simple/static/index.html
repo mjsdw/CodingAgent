@@ -2040,9 +2040,16 @@
         const modifiedFiles = (data.results || []).filter(r => r.status === 'applied');
         await refreshModifiedFilesAfterConfirm(modifiedFiles);
 
-        // 提示成功
-        statusProject.textContent = `✅ 已确认 ${data.confirmed_count} 个修改`;
-        appendMessage('assistant', `✅ 已应用 ${data.confirmed_count} 个修改。\n${modifiedFiles.map(r => `  • ${getFilename(r.filepath)}`).join('\n')}\n\n如需撤销，可使用撤销功能恢复到修改前。`);
+        // 部分失败：失败的修改保留在待确认列表（服务端），提示用户重试
+        const failedFiles = (data.results || []).filter(r => r.status === 'error');
+        if (failedFiles.length > 0) {
+          statusProject.textContent = `⚠️ ${data.confirmed_count} 个已应用，${failedFiles.length} 个失败`;
+          appendMessage('assistant', `⚠️ 部分修改未应用（${data.confirmed_count} 个成功，${failedFiles.length} 个失败）。\n\n失败文件：\n${failedFiles.map(r => `  • ${getFilename(r.filepath)}`).join('\n')}\n\n失败原因：${failedFiles[0].error || '未知'}\n\n失败的修改仍保留在待确认列表，处理后（如重新打开项目）发送任意消息即可重新预览并确认。`);
+        } else {
+          // 提示成功
+          statusProject.textContent = `✅ 已确认 ${data.confirmed_count} 个修改`;
+          appendMessage('assistant', `✅ 已应用 ${data.confirmed_count} 个修改。\n${modifiedFiles.map(r => `  • ${getFilename(r.filepath)}`).join('\n')}\n\n如需撤销，可使用撤销功能恢复到修改前。`);
+        }
         setTimeout(() => {
           statusProject.textContent = `● 工作区: ${projectNameDisplay.textContent}`;
         }, 4000);

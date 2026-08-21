@@ -275,12 +275,19 @@ def _generate_edit_params(
     if "error" in result:
         return result
 
-    old_string = result.get("old_string", "")
-    new_string = result.get("new_string", "")
-    if not old_string or not new_string:
-        return {"error": "LLM 未返回有效的 old_string/new_string"}
+    old_string = result.get("old_string", "") or ""
+    new_string = result.get("new_string", "") or ""
+    # old_string 必须非空（要有可替换的目标）；
+    # new_string 允许为空字符串——替换为空 = 删除片段（删除注释/代码行的正常表达）
+    if not old_string:
+        return {"error": "LLM 未返回有效的 old_string"}
 
-    return result
+    # 返回归一化后的参数（new_string 可能是 None，归一为 ""，防止下游 replace(None) 崩溃）
+    return {
+        "old_string": old_string,
+        "new_string": new_string,
+        "explanation": result.get("explanation", ""),
+    }
 
 
 def _generate_write_content(
@@ -339,7 +346,8 @@ def _exec_edit_file(action_input: dict, state: CodeState) -> str:
 
     修改流程：Agent 规划 edit_file → executor 检测参数为空 →
     调 LLM 基于"已读内容 + 修改意图"动态生成 old_string/new_string →
-    生成 diff 暂存 → 状态机提前结束 → 前端展示 diff → 用户确认 → /api/code/confirm 真正写入。
+    生成 diff 暂存 → 继续执行剩余计划步骤（所有修改攒齐）→
+    前端展示全部 diff → 用户确认 → /api/code/confirm 真正写入。
     """
     filepath = action_input.get("filepath", "")
     old_string = action_input.get("old_string", "") or ""
@@ -634,8 +642,9 @@ def executor_node(state: CodeState) -> CodeState:
         "success": not is_fail,
     })
 
-    # Diff 预览模式：edit_file/write_file 成功后，检测到 pending 修改则提前 finish
-    # 让 summarize_node 输出预览提示，等用户在前端确认
+    # Diff 预览模式：edit_file/write_file 只暂存不写盘，不提前终止状态机——
+    # 继续执行剩余步骤，把所有修改攒齐后由 summarize_node 统一提示，
+    # 前端一次性展示全部 diff 供用户确认（避免多文件需求只完成一半）
     new_state = {
         **state,
         "executed_steps": executed,
@@ -644,8 +653,7 @@ def executor_node(state: CodeState) -> CodeState:
     if not is_fail and action in ("edit_file", "write_file"):
         pending = state.get("pending_modifications", [])
         if pending:
-            print(f"⏸️ [CodeGen] 检测到 {len(pending)} 个待确认修改，提前结束等待用户确认")
-            new_state["done"] = True
+            print(f"⏸️ [CodeGen] 已暂存 {len(pending)} 个待确认修改（继续执行剩余步骤，最后统一确认）")
 
     return new_state
 

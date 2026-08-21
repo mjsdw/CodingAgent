@@ -13,7 +13,6 @@
 #   → 用户点"撤销" → cancel_modifications 清空暂存，让用户重新描述需求
 
 import difflib
-from pathlib import Path
 
 from tools.code_tool.path_security import _validate_path, _validate_write_path
 from tools.code_tool.snapshot import _create_snapshot
@@ -129,21 +128,34 @@ def get_pending_modifications(session_id: str = None) -> list[dict]:
 def confirm_modifications(session_id: str = None) -> dict:
     """确认执行所有暂存的修改（真正写入文件 + 创建快照）。
 
-    :return: {status, confirmed_count, results: [{filepath, snapshot_id, status}]}
+    安全与容错设计：
+      1. 写入前对每个文件重新调用 _validate_write_path——preview 时的校验
+         结果可能已过期（用户查看 diff 期间可能关闭了项目，白名单已变化），
+         不能信任 preview 阶段的校验结论（TOCTOU）
+      2. 写入失败的暂存项保留在暂存区（只移除成功项）——用户处理完失败
+         原因（如重新打开项目）后可再次 confirm 重试，失败内容不丢失
+
+    :return: {status, confirmed_count, failed_count, results: [{filepath, snapshot_id, status}]}
+             status: no_pending / confirmed（全部成功）/ partial_confirmed（部分失败，失败项保留）
     """
     sid = session_id or "default"
     pending = _PENDING_MODIFICATIONS.get(sid, [])
     if not pending:
-        return {"status": "no_pending", "confirmed_count": 0, "results": []}
+        return {"status": "no_pending", "confirmed_count": 0, "failed_count": 0, "results": []}
 
     results = []
+    succeeded = []   # 成功写入的暂存项
+    failed = []      # 写入失败的暂存项（保留在暂存区供重试）
+
     for mod in pending:
         filepath = mod["filepath"]
         new_content = mod["new_content"]
         action = mod["action"]
 
         try:
-            p = Path(filepath).resolve()
+            # 写入前重新校验路径（不能信任 preview 时的校验结果）
+            p = _validate_write_path(filepath, sid)
+
             # 已存在文件创建快照
             snapshot_id = 0
             if p.exists():
@@ -158,20 +170,25 @@ def confirm_modifications(session_id: str = None) -> dict:
                 "snapshot_id": snapshot_id,
                 "status": "applied",
             })
+            succeeded.append(mod)
         except Exception as e:
             results.append({
                 "filepath": filepath,
                 "status": "error",
                 "error": str(e),
             })
+            failed.append(mod)
 
-    # 清除暂存
-    confirmed_count = len(pending)
-    del _PENDING_MODIFICATIONS[sid]
+    # 只清除成功项；失败项保留在暂存区，用户可处理后重试
+    if not failed:
+        del _PENDING_MODIFICATIONS[sid]
+    else:
+        _PENDING_MODIFICATIONS[sid] = failed
 
     return {
-        "status": "confirmed",
-        "confirmed_count": confirmed_count,
+        "status": "confirmed" if not failed else "partial_confirmed",
+        "confirmed_count": len(succeeded),
+        "failed_count": len(failed),
         "results": results,
     }
 
