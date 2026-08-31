@@ -1233,6 +1233,10 @@
     const TREE_ICON_DIR_OPEN = SVG_CHEVRON_DOWN + SVG_FOLDER_OPEN;
 
     // ---- session_id 管理 ----
+    // 会话代际：每次会话切换（新会话/切换历史会话）+1。
+    // 提交消息时捕获当前代际，轮询/渲染结果前比对——不一致说明用户已切换会话，
+    // 旧任务的结果不再写入当前聊天区（其答案已存旧会话历史，切回可见）
+    let chatEpoch = 0;
     function getSessionId() {
       let sid = localStorage.getItem('rag_session_id');
       if (!sid) {
@@ -1241,7 +1245,7 @@
       }
       return sid;
     }
-    function newSession() {
+    function newSession(msg) {
       // 若有未确认的 diff 预览，先关闭（不调用 cancel，让旧会话 pending 自然遗留或由后端清理）
       if (diffOverlay.classList.contains('active')) {
         closeDiffPreview();
@@ -1249,14 +1253,15 @@
       const sid = 'web-' + Math.random().toString(36).substring(2, 10);
       localStorage.setItem('rag_session_id', sid);
       currentSessionId = sid;
+      chatEpoch++;
       sessionInfo.textContent = `会话：${sid}`;
-      chatArea.innerHTML = `<div class="message assistant"><div class="bubble">已开启新会话。请提问。</div></div>`;
+      chatArea.innerHTML = `<div class="message assistant"><div class="bubble">${msg || '已开启新会话。请提问。'}</div></div>`;
       // 不清空已打开的项目（项目绑定独立于会话）
       questionInput.focus();
     }
     let currentSessionId = getSessionId();
     sessionInfo.textContent = `会话：${currentSessionId}`;
-    clearBtn.addEventListener('click', newSession);
+    clearBtn.addEventListener('click', () => newSession());
 
     // ---- Monaco Editor 初始化 ----
     let monacoReady = false;
@@ -1688,6 +1693,7 @@
       // 当前任务控制（用于暂停/继续/取消）
       let currentTaskId = null;
       let pollTimer = null;
+      const epoch = chatEpoch;  // 捕获会话代际：切换会话后本任务结果不再写入当前聊天区
 
       try {
         // 1. 提交任务（异步模式，立即返回 task_id）
@@ -1701,6 +1707,13 @@
           throw new Error(err.error || `HTTP ${resp.status}`);
         }
         const data = await resp.json();
+
+        // 等待响应期间用户已切换会话：结果属于旧会话（已存历史），不再写入当前聊天区
+        if (epoch !== chatEpoch) {
+          removeTyping();
+          return;
+        }
+
         currentTaskId = data.task_id;
 
         // 同步模式（chitchat/weather/kb_search/intercept）：后端直接返回 answer，无需轮询
@@ -1717,10 +1730,24 @@
 
         // 3. 轮询任务状态
         await new Promise((resolve, reject) => {
+          let failCount = 0;  // 连续失败计数（防止网络断开/任务丢失时无限轮询）
           pollTimer = setInterval(async () => {
+            // 会话已切换：停止轮询，静默结束（答案已存旧会话历史，切回可见）
+            if (epoch !== chatEpoch) {
+              clearInterval(pollTimer);
+              resolve(null);
+              return;
+            }
             try {
               const sresp = await fetch(`/api/task/${currentTaskId}/status`);
-              if (!sresp.ok) return;
+              if (sresp.status === 404) {
+                // 任务不存在（服务重启或已清理），立即终止轮询
+                clearInterval(pollTimer);
+                reject(new Error('任务不存在（服务可能已重启）'));
+                return;
+              }
+              if (!sresp.ok) throw new Error(`HTTP ${sresp.status}`);
+              failCount = 0;
               const sdata = await sresp.json();
 
               // 更新进度提示
@@ -1738,12 +1765,19 @@
               }
               // running / paused 继续轮询
             } catch (e) {
-              // 网络错误，继续轮询
+              // 网络错误：连续失败 10 次（约 8 秒）后放弃，避免无限轮询锁死输入框
+              failCount++;
+              if (failCount >= 10) {
+                clearInterval(pollTimer);
+                reject(new Error('任务状态查询持续失败，请检查网络'));
+              }
             }
           }, 800);  // 800ms 轮询间隔
         }).then(async (sdata) => {
           removeTyping();
           removeTaskControls();
+          // 会话已切换（sdata 为 null 或代际不符）：旧任务结果不写入新会话聊天区
+          if (epoch !== chatEpoch || !sdata) return;
           const msg = appendMessage('assistant', sdata.answer || '（无返回）');
 
           // 检查是否有待确认的 diff 预览
@@ -1754,6 +1788,8 @@
         }).catch((err) => {
           removeTyping();
           removeTaskControls();
+          // 会话已切换：错误信息也不写入新会话聊天区
+          if (epoch !== chatEpoch) return;
           const msg = appendMessage('assistant', `⚠️ ${err.message}`);
           msg.querySelector('.bubble').classList.add('error');
         });
@@ -2250,7 +2286,11 @@
           sessionsList.innerHTML = '<div class="sessions-empty"><span class="empty-icon">🕐</span>暂无历史会话</div>';
         }
         if (sessionId === currentSessionId) {
-          statusProject.textContent = '🗑️ 当前会话历史已删除';
+          // 当前会话被删：立即重置为新会话。
+          // 否则 currentSessionId 仍指向已删除会话，后续消息会带着旧 session_id 写库，
+          // 已删除的会话会在列表中"复活"；聊天区也会残留已删除的消息
+          newSession('当前会话已删除，已开启新会话。');
+          statusProject.textContent = '🗑️ 当前会话已删除，已开启新会话';
           setTimeout(() => {
             statusProject.textContent = `● 工作区: ${projectNameDisplay.textContent}`;
           }, 3000);
@@ -2266,8 +2306,9 @@
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
 
-        // 切换当前会话（后续对话沿用该会话历史）
+        // 切换当前会话（后续对话沿用该会话历史）；代际+1 使旧会话的轮询任务静默终止
         currentSessionId = sessionId;
+        chatEpoch++;
         localStorage.setItem('rag_session_id', sessionId);
         sessionInfo.textContent = `会话：${sessionId}`;
 
@@ -2281,6 +2322,8 @@
           }
         }
         closeSessionsPanel();
+        // 切回会话时检查待确认修改（任务在用户离开期间完成时，其 diff 会在此弹出）
+        await checkPendingModifications();
         questionInput.focus();
       } catch (e) {
         alert('加载会话失败: ' + e.message);
