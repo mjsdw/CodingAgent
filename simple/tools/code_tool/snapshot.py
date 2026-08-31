@@ -57,9 +57,12 @@ def _create_snapshot(filepath: str, action_desc: str, session_id: str = None) ->
     p = _validate_path(filepath, session_id)
     history_dir = _get_history_dir(filepath, session_id)
 
-    # 计算下一个 snapshot_id
-    existing = sorted(history_dir.glob("*.snapshot"))
-    next_id = len(existing) + 1
+    # 计算下一个 snapshot_id：取现有最大编号 + 1。
+    # 用 max 而非 len：上限清理会删除最旧的编号（如 001），此时 len(existing)=19 但最大编号=020，
+    # 用 len+1=20 会覆盖已有 020 快照；用 max+1=21 则新增编号，历史链不损坏。
+    existing = history_dir.glob("*.snapshot")
+    max_id = max((int(f.stem) for f in existing), default=0)
+    next_id = max_id + 1
 
     # 存储快照内容
     snapshot_path = history_dir / f"{next_id:03d}.snapshot"
