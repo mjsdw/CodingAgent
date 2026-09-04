@@ -1,6 +1,8 @@
 # config/config.py
 # ========== 全局配置中心：所有路径、模型、阈值、轮次统一在此管理 ==========
 
+import os
+
 # ---------------------- 路径配置 ----------------------
 # 路径相对项目根目录（simple/），由 main.py 作为入口保证工作目录
 VECTOR_DB_PATH = "./db"                          # Chroma 向量库持久化目录
@@ -146,6 +148,19 @@ UPLOAD_ALLOWED_EXTS = {
     ".toml", ".ini", ".cfg", ".html", ".css", ".scss", ".less",
     ".vue", ".svelte", ".sql", ".sh", ".bat", ".ps1",
 }
+
+# ---------------------- 多模态（图片理解）配置 ----------------------
+# 视觉语言模型：处理带图片的消息（走 DashScope OpenAI 兼容端点，复用 DASHSCOPE_API_KEY）
+# 可选：qwen-vl-max（最强）/ qwen-vl-plus（更便宜）；换其他厂商改 .env 的 VL_MODEL 即可
+VL_MODEL = os.getenv("VL_MODEL", "qwen-vl-max")
+# 图片上传保存根目录（按 session_id 隔离：images/{session_id}/{filename}）
+IMAGE_UPLOAD_DIR = "./data/workspace/images"
+# 单张图片大小上限（字节），默认 10MB
+IMAGE_MAX_FILE_SIZE = 10 * 1024 * 1024
+# 允许上传的图片扩展名白名单
+IMAGE_ALLOWED_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
+# 单条消息最多携带图片数（防止 token 膨胀和滥用）
+IMAGE_MAX_PER_MESSAGE = 4
 
 # ---------------------- 工作区（打开项目）配置 ----------------------
 # 单会话最多可同时打开的项目目录数
