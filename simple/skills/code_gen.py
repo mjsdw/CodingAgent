@@ -44,6 +44,7 @@ from tools.code_tool import (
     preview_edit_impl,
     preview_write_impl,
     get_pending_modifications,
+    cancel_modifications,
     # 会话工作区/文件查询（给 Planner 注入路径清单）
     get_session_workspaces,
     get_session_open_files,
@@ -1064,6 +1065,7 @@ class CodeGenSkill(BaseSkill):
 
         if task_control is not None and task_control.is_cancelled:
             _CHECKPOINTER.delete_thread(thread_id)
+            cancel_modifications(session_id=session_id)
             print(f"===== [CodeGenSkill] 状态机已取消并清理 checkpoint =====\n")
             return "（任务已取消，未生成总结）", []
 
