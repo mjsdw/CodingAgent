@@ -1237,6 +1237,7 @@
     // 提交消息时捕获当前代际，轮询/渲染结果前比对——不一致说明用户已切换会话，
     // 旧任务的结果不再写入当前聊天区（其答案已存旧会话历史，切回可见）
     let chatEpoch = 0;
+    let currentWorkspacePaths = [];
     function getSessionId() {
       let sid = localStorage.getItem('rag_session_id');
       if (!sid) {
@@ -1245,19 +1246,51 @@
       }
       return sid;
     }
-    function newSession(msg) {
+    async function rebindProjectsToSession(projectPaths, sessionId) {
+      const failed = [];
+      for (const projectPath of projectPaths) {
+        try {
+          const resp = await fetch('/api/workspace/open', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: sessionId, project_path: projectPath }),
+          });
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+            throw new Error(err.error || '重新绑定失败');
+          }
+        } catch (e) {
+          failed.push({ projectPath, error: e.message });
+        }
+      }
+      return failed;
+    }
+
+    async function newSession(msg) {
       // 若有未确认的 diff 预览，先关闭（不调用 cancel，让旧会话 pending 自然遗留或由后端清理）
       if (diffOverlay.classList.contains('active')) {
         closeDiffPreview();
       }
+      const projectPaths = [...currentWorkspacePaths];
       const sid = 'web-' + Math.random().toString(36).substring(2, 10);
       localStorage.setItem('rag_session_id', sid);
       currentSessionId = sid;
       chatEpoch++;
       sessionInfo.textContent = `会话：${sid}`;
       chatArea.innerHTML = `<div class="message assistant"><div class="bubble">${msg || '已开启新会话。请提问。'}</div></div>`;
-      // 不清空已打开的项目（项目绑定独立于会话）
-      questionInput.focus();
+      questionInput.disabled = true;
+      submitBtn.disabled = true;
+      try {
+        const failed = await rebindProjectsToSession(projectPaths, sid);
+        if (failed.length > 0) {
+          statusProject.textContent = `⚠️ ${failed.length} 个项目重新绑定失败`;
+          appendMessage('assistant', `⚠️ 新会话已创建，但以下项目重新绑定失败：\n${failed.map(item => `  • ${item.projectPath}: ${item.error}`).join('\n')}\n\n请重新打开这些项目后再继续。`);
+        }
+      } finally {
+        questionInput.disabled = false;
+        submitBtn.disabled = false;
+        questionInput.focus();
+      }
     }
     let currentSessionId = getSessionId();
     sessionInfo.textContent = `会话：${currentSessionId}`;
@@ -1434,6 +1467,7 @@
         if (data.status === 'error') throw new Error(data.error || '打开失败');
 
         // 更新状态
+        currentWorkspacePaths = data.current_projects || [data.project_path];
         statusProject.textContent = `● 工作区: ${data.project_name}`;
         projectNameDisplay.textContent = data.project_name;
         modeLabel.textContent = `项目: ${data.project_name}`;
