@@ -122,6 +122,8 @@ class TaskControl:
     def mark_done(self, answer: str, sources: list):
         """标记任务完成。"""
         with self._lock:
+            if self._state in (TaskState.DONE, TaskState.CANCELLED, TaskState.ERROR):
+                return
             self.answer = answer
             self.sources = sources
             self._state = TaskState.DONE
@@ -129,6 +131,8 @@ class TaskControl:
     def mark_error(self, error: str):
         """标记任务出错。"""
         with self._lock:
+            if self._state in (TaskState.DONE, TaskState.CANCELLED, TaskState.ERROR):
+                return
             self.error = error
             self._state = TaskState.ERROR
 
@@ -264,7 +268,6 @@ def run_task(tc: TaskControl, orch, question: str, session_id: str):
         tc.mark_done(answer, sources)
         print(f"✅ [TaskManager] 任务 {tc.task_id} 完成")
     except TaskCancelled:
-        tc.mark_error("任务已取消")
         print(f"🛑 [TaskManager] 任务 {tc.task_id} 已取消")
     except Exception as e:
         tc.mark_error(str(e))
