@@ -87,6 +87,7 @@ class ChatResponse(BaseModel):
 
 class CodeUndoRequest(BaseModel):
     """代码撤销请求体。"""
+    session_id: str              # 会话 ID，用于定位会话快照并校验动态工作区
     filepath: str                 # 要撤销修改的文件绝对路径
 
 
@@ -460,7 +461,7 @@ async def code_undo(req: CodeUndoRequest):
 
     使用方式：
         POST /api/code/undo
-        Body: {"filepath": "d:/workspace/project/src/main.py"}
+        Body: {"session_id": "web-abc123", "filepath": "d:/workspace/project/src/main.py"}
 
     返回：
         - status="undone"      → 撤销成功，文件已恢复
@@ -484,7 +485,7 @@ async def code_undo(req: CodeUndoRequest):
         )
 
     try:
-        result = undo_last(filepath)
+        result = undo_last(filepath, session_id=req.session_id)
         return CodeUndoResponse(
             filepath=filepath,
             snapshot_id=result.get("snapshot_id", 0),
@@ -505,11 +506,14 @@ async def code_undo(req: CodeUndoRequest):
 
 
 @app.get("/api/code/history", response_model=list[CodeHistoryItem])
-async def code_history(filepath: str):
+async def code_history(
+    filepath: str,
+    session_id: str = Query(..., description="会话 ID，用于定位会话快照"),
+):
     """查询指定文件的修改历史列表。
 
     使用方式：
-        GET /api/code/history?filepath=d:/workspace/project/src/main.py
+        GET /api/code/history?session_id=web-abc123&filepath=d:/workspace/project/src/main.py
 
     返回：按 snapshot_id 升序排列的历史记录列表。
     """
@@ -524,7 +528,7 @@ async def code_history(filepath: str):
         return []
 
     try:
-        history = get_history(filepath)
+        history = get_history(filepath, session_id=session_id)
         return [
             CodeHistoryItem(
                 snapshot_id=item.get("snapshot_id", 0),
