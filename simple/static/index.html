@@ -2110,11 +2110,19 @@
         const modifiedFiles = (data.results || []).filter(r => r.status === 'applied');
         await refreshModifiedFilesAfterConfirm(modifiedFiles);
 
-        // 部分失败：失败的修改保留在待确认列表（服务端），提示用户重试
-        const failedFiles = (data.results || []).filter(r => r.status === 'error');
+        // 部分失败或文件冲突：未应用的修改保留在待确认列表（服务端）
+        const failedFiles = (data.results || []).filter(
+          r => r.status === 'error' || r.status === 'conflict'
+        );
+        const conflictFiles = failedFiles.filter(r => r.status === 'conflict');
         if (failedFiles.length > 0) {
-          statusProject.textContent = `⚠️ ${data.confirmed_count} 个已应用，${failedFiles.length} 个失败`;
-          appendMessage('assistant', `⚠️ 部分修改未应用（${data.confirmed_count} 个成功，${failedFiles.length} 个失败）。\n\n失败文件：\n${failedFiles.map(r => `  • ${getFilename(r.filepath)}`).join('\n')}\n\n失败原因：${failedFiles[0].error || '未知'}\n\n失败的修改仍保留在待确认列表，处理后（如重新打开项目）发送任意消息即可重新预览并确认。`);
+          if (conflictFiles.length > 0) {
+            statusProject.textContent = `⚠️ ${data.confirmed_count} 个已应用，${conflictFiles.length} 个冲突`;
+            appendMessage('assistant', `⚠️ ${conflictFiles.length} 个修改未应用：文件在预览后已发生变化。\n\n冲突文件：\n${conflictFiles.map(r => `  • ${getFilename(r.filepath)}`).join('\n')}\n\n为避免覆盖磁盘上的新内容，系统已停止应用这些修改。请取消旧修改并重新生成预览后再确认。`);
+          } else {
+            statusProject.textContent = `⚠️ ${data.confirmed_count} 个已应用，${failedFiles.length} 个失败`;
+            appendMessage('assistant', `⚠️ 部分修改未应用（${data.confirmed_count} 个成功，${failedFiles.length} 个失败）。\n\n失败文件：\n${failedFiles.map(r => `  • ${getFilename(r.filepath)}`).join('\n')}\n\n失败原因：${failedFiles[0].error || '未知'}\n\n失败的修改仍保留在待确认列表，处理后（如重新打开项目）发送任意消息即可重新预览并确认。`);
+          }
         } else {
           // 提示成功
           statusProject.textContent = `✅ 已确认 ${data.confirmed_count} 个修改`;
