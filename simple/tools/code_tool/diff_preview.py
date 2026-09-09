@@ -23,6 +23,24 @@ from tools.code_tool.snapshot import _create_snapshot
 _PENDING_MODIFICATIONS: dict[str, list[dict]] = {}
 
 
+def _find_pending_modification(session_id: str, filepath: str) -> dict | None:
+    """查找同一会话、同一路径尚未确认的累计修改。"""
+    for mod in _PENDING_MODIFICATIONS.get(session_id, []):
+        if mod["filepath"] == filepath:
+            return mod
+    return None
+
+
+def _store_pending_modification(session_id: str, modification: dict) -> None:
+    """同一文件只保留一个累计版本，避免确认时后一个版本覆盖前一个。"""
+    pending = _PENDING_MODIFICATIONS.setdefault(session_id, [])
+    for index, existing in enumerate(pending):
+        if existing["filepath"] == modification["filepath"]:
+            pending[index] = modification
+            return
+    pending.append(modification)
+
+
 def _generate_diff(old_content: str, new_content: str, filepath: str) -> str:
     """生成 unified diff 格式的差异文本。"""
     old_lines = old_content.splitlines(keepends=True)
@@ -46,10 +64,14 @@ def preview_edit_impl(filepath: str, old_string: str, new_string: str, session_i
     except ValueError as e:
         return {"error": str(e)}
 
-    if not p.exists():
+    sid = session_id or "default"
+    existing = _find_pending_modification(sid, str(p))
+    if not p.exists() and existing is None:
         return {"error": f"文件不存在: {p}"}
 
-    content = p.read_text(encoding="utf-8")
+    # 同一文件已有待确认修改时，继续在累计版本上编辑，而不是重新读取磁盘旧版本。
+    content = existing["new_content"] if existing else p.read_text(encoding="utf-8")
+    old_content = existing["old_content"] if existing else content
 
     # 校验 old_string 存在性 + 唯一性（与 edit_file_impl 一致）
     if old_string not in content:
@@ -62,20 +84,22 @@ def preview_edit_impl(filepath: str, old_string: str, new_string: str, session_i
     new_content = content.replace(old_string, new_string, 1)
 
     # 生成 diff
-    diff = _generate_diff(content, new_content, str(p))
+    diff = _generate_diff(old_content, new_content, str(p))
 
-    # 暂存
-    _PENDING_MODIFICATIONS.setdefault(session_id or "default", []).append({
+    # 暂存；同一路径覆盖为累计后的单个版本。
+    modification = {
         "filepath": str(p),
-        "action": "edit_file",
+        "action": existing["action"] if existing else "edit_file",
         "old_string": old_string,
         "new_string": new_string,
-        "old_content": content,
+        "old_content": old_content,
         "new_content": new_content,
         "diff": diff,
-    })
+        "is_new": existing.get("is_new", False) if existing else False,
+    }
+    _store_pending_modification(sid, modification)
 
-    pending = _PENDING_MODIFICATIONS.get(session_id or "default", [])
+    pending = _PENDING_MODIFICATIONS.get(sid, [])
     return {
         "status": "previewed",
         "filepath": str(p),
@@ -94,14 +118,20 @@ def preview_write_impl(filepath: str, content: str, session_id: str = None) -> d
     except ValueError as e:
         return {"error": str(e)}
 
-    is_new = not p.exists()
-    old_content = p.read_text(encoding="utf-8") if not is_new else ""
+    sid = session_id or "default"
+    existing = _find_pending_modification(sid, str(p))
+    is_new = existing.get("is_new", False) if existing else not p.exists()
+    old_content = (
+        existing["old_content"]
+        if existing
+        else p.read_text(encoding="utf-8") if not is_new else ""
+    )
 
     # 生成 diff
     diff = _generate_diff(old_content, content, str(p))
 
-    # 暂存
-    _PENDING_MODIFICATIONS.setdefault(session_id or "default", []).append({
+    # 暂存；write_file 的内容是目标完整版本，同一路径只保留最新累计结果。
+    _store_pending_modification(sid, {
         "filepath": str(p),
         "action": "write_file",
         "old_content": old_content,
@@ -110,7 +140,7 @@ def preview_write_impl(filepath: str, content: str, session_id: str = None) -> d
         "is_new": is_new,
     })
 
-    pending = _PENDING_MODIFICATIONS.get(session_id or "default", [])
+    pending = _PENDING_MODIFICATIONS.get(sid, [])
     return {
         "status": "previewed",
         "filepath": str(p),
@@ -146,6 +176,7 @@ def confirm_modifications(session_id: str = None) -> dict:
     results = []
     succeeded = []   # 成功写入的暂存项
     failed = []      # 写入失败的暂存项（保留在暂存区供重试）
+    conflict_count = 0
 
     for mod in pending:
         filepath = mod["filepath"]
@@ -155,6 +186,23 @@ def confirm_modifications(session_id: str = None) -> dict:
         try:
             # 写入前重新校验路径（不能信任 preview 时的校验结果）
             p = _validate_write_path(filepath, sid)
+
+            # 预览后磁盘内容发生变化时拒绝覆盖，保护用户或其他任务的新修改。
+            is_new = mod.get("is_new", False)
+            if is_new and p.exists():
+                raise FileExistsError("文件在预览后已被创建，请重新生成修改预览")
+            if not is_new:
+                if not p.exists():
+                    raise FileNotFoundError("文件在预览后已被删除，请重新生成修改预览")
+                if p.read_text(encoding="utf-8") != mod["old_content"]:
+                    results.append({
+                        "filepath": filepath,
+                        "status": "conflict",
+                        "error": "文件在预览后已发生变化，请重新生成修改预览",
+                    })
+                    failed.append(mod)
+                    conflict_count += 1
+                    continue
 
             # 已存在文件创建快照
             snapshot_id = 0
@@ -171,6 +219,14 @@ def confirm_modifications(session_id: str = None) -> dict:
                 "status": "applied",
             })
             succeeded.append(mod)
+        except (FileExistsError, FileNotFoundError) as e:
+            results.append({
+                "filepath": filepath,
+                "status": "conflict",
+                "error": str(e),
+            })
+            failed.append(mod)
+            conflict_count += 1
         except Exception as e:
             results.append({
                 "filepath": filepath,
@@ -186,7 +242,11 @@ def confirm_modifications(session_id: str = None) -> dict:
         _PENDING_MODIFICATIONS[sid] = failed
 
     return {
-        "status": "confirmed" if not failed else "partial_confirmed",
+        "status": (
+            "confirmed" if not failed
+            else "conflict" if conflict_count == len(failed) and not succeeded
+            else "partial_confirmed"
+        ),
         "confirmed_count": len(succeeded),
         "failed_count": len(failed),
         "results": results,
