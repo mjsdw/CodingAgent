@@ -2335,6 +2335,9 @@
     }
 
     async function switchToSession(sessionId) {
+      const projectPaths = [...currentWorkspacePaths];
+      questionInput.disabled = true;
+      submitBtn.disabled = true;
       try {
         const resp = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/messages`);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -2355,12 +2358,22 @@
             appendMessage(m.role === 'user' ? 'user' : 'assistant', m.content);
           }
         }
+
+        const failed = await rebindProjectsToSession(projectPaths, sessionId);
+        if (failed.length > 0) {
+          statusProject.textContent = `⚠️ ${failed.length} 个项目重新绑定失败`;
+          appendMessage('assistant', `⚠️ 已切换历史会话，但以下项目重新绑定失败：\n${failed.map(item => `  • ${item.projectPath}: ${item.error}`).join('\n')}\n\n请重新打开这些项目后再继续。`);
+        }
         closeSessionsPanel();
         // 切回会话时检查待确认修改（任务在用户离开期间完成时，其 diff 会在此弹出）
         await checkPendingModifications();
         questionInput.focus();
       } catch (e) {
         alert('加载会话失败: ' + e.message);
+      } finally {
+        questionInput.disabled = false;
+        submitBtn.disabled = false;
+        questionInput.focus();
       }
     }
 
