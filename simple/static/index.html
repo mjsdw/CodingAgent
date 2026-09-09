@@ -343,12 +343,20 @@
       background: var(--editor-bg);
       overflow: hidden;
     }
-    #editor-tabs {
+    #editor-header {
       display: flex;
+      align-items: stretch;
       background: var(--surface);
       border-bottom: 1px solid var(--border);
-      overflow-x: auto;
+      min-height: 35px;
       flex-shrink: 0;
+    }
+    #editor-tabs {
+      flex: 1;
+      display: flex;
+      background: var(--surface);
+      overflow-x: auto;
+      min-width: 0;
       min-height: 35px;
     }
     #editor-tabs::-webkit-scrollbar { height: 0; }
@@ -396,6 +404,27 @@
     }
     .editor-tab:hover .close-btn, .editor-tab.active .close-btn { opacity: 0.5; }
     .editor-tab .close-btn:hover { opacity: 1; color: var(--error); background: var(--error-soft); }
+    #undo-current-btn {
+      min-width: 92px;
+      padding: 0 12px;
+      border: none;
+      border-left: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-muted);
+      font: 500 11.5px var(--font-ui);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+    #undo-current-btn:hover:not(:disabled) {
+      color: var(--accent);
+      background: var(--accent-soft);
+    }
+    #undo-current-btn:disabled {
+      color: var(--text-subtle);
+      cursor: not-allowed;
+      opacity: 0.65;
+    }
     #editor-container {
       flex: 1;
       position: relative;
@@ -608,6 +637,55 @@
       background: #fff;
       box-shadow: 0 0 0 3px var(--accent-glow), var(--shadow-composer);
     }
+    #pending-preview-btn {
+      height: 32px;
+      padding: 0 10px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-md);
+      background: #fff;
+      color: var(--text-muted);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+      cursor: pointer;
+      font: 500 11.5px var(--font-ui);
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+    #pending-preview-btn.has-pending {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+    #pending-preview-btn.has-pending:hover {
+      background: #fff;
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    #pending-preview-btn:disabled {
+      color: var(--text-subtle);
+      border-color: var(--border);
+      background: var(--surface-3);
+      cursor: not-allowed;
+    }
+    #pending-preview-btn.pending-error {
+      color: var(--error);
+      border-color: #fecaca;
+      background: var(--error-soft);
+    }
+    #pending-preview-count {
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      border-radius: 9px;
+      color: #fff;
+      background: var(--accent);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font: 600 10px var(--font-mono);
+    }
+    #pending-preview-count[hidden] { display: none; }
     #question-input {
       flex: 1;
       background: transparent;
@@ -1096,7 +1174,10 @@
 
     <!-- 中：编辑器 -->
     <div id="editor-pane">
-      <div id="editor-tabs"></div>
+      <div id="editor-header">
+        <div id="editor-tabs"></div>
+        <button type="button" id="undo-current-btn" title="请先打开一个文件" disabled>↶ 撤销修改</button>
+      </div>
       <div id="editor-container">
         <div id="editor-empty">
           <div class="welcome">
@@ -1137,6 +1218,10 @@
       <div id="chat-input-area">
         <form id="input-form">
           <div class="composer-wrap">
+            <button type="button" id="pending-preview-btn" title="暂无待确认修改" disabled>
+              <span>修改预览</span>
+              <span id="pending-preview-count" hidden>0</span>
+            </button>
             <input type="text" id="question-input" placeholder="问点什么，或让 Agent 修改代码..." autocomplete="off" autofocus>
             <button type="submit" id="submit-btn" title="发送">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
@@ -1207,6 +1292,8 @@
     const inputForm = document.getElementById('input-form');
     const questionInput = document.getElementById('question-input');
     const submitBtn = document.getElementById('submit-btn');
+    const pendingPreviewBtn = document.getElementById('pending-preview-btn');
+    const pendingPreviewCount = document.getElementById('pending-preview-count');
     const modeLabel = document.getElementById('mode-label');
     const sessionInfo = document.getElementById('session-info');
     const clearBtn = document.getElementById('clear-btn');
@@ -1216,6 +1303,7 @@
     const treeContainer = document.getElementById('tree-container');
     const projectNameDisplay = document.getElementById('project-name-display');
     const editorTabs = document.getElementById('editor-tabs');
+    const undoCurrentBtn = document.getElementById('undo-current-btn');
     const editorEmpty = document.getElementById('editor-empty');
     const monacoEditorDiv = document.getElementById('monaco-editor');
     const statusProject = document.getElementById('status-project');
@@ -1282,6 +1370,8 @@
       submitBtn.disabled = true;
       try {
         const failed = await rebindProjectsToSession(projectPaths, sid);
+        await loadPendingModifications({ showPreview: false });
+        await refreshUndoButton();
         if (failed.length > 0) {
           statusProject.textContent = `⚠️ ${failed.length} 个项目重新绑定失败`;
           appendMessage('assistant', `⚠️ 新会话已创建，但以下项目重新绑定失败：\n${failed.map(item => `  • ${item.projectPath}: ${item.error}`).join('\n')}\n\n请重新打开这些项目后再继续。`);
@@ -1594,6 +1684,7 @@
         statusLang.textContent = tab.lang;
         renderTabs();
       }
+      refreshUndoButton();
     }
 
     function closeTab(tab) {
@@ -1615,7 +1706,96 @@
         }
       }
       renderTabs();
+      refreshUndoButton();
     }
+
+    let undoHistoryRequestId = 0;
+
+    async function getFileHistory(tab) {
+      const query = new URLSearchParams({
+        session_id: currentSessionId,
+        filepath: tab.filepath,
+      });
+      const resp = await fetch('/api/code/history?' + query.toString());
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+        throw new Error(err.error || '修改历史加载失败');
+      }
+      const data = await resp.json();
+      return Array.isArray(data) ? data : [];
+    }
+
+    async function refreshUndoButton() {
+      const tab = activeTab;
+      const requestId = ++undoHistoryRequestId;
+      undoCurrentBtn.disabled = true;
+      undoCurrentBtn.textContent = '↶ 撤销修改';
+      undoCurrentBtn.title = tab ? '正在检查修改历史...' : '请先打开一个文件';
+      if (!tab) return;
+
+      try {
+        const history = await getFileHistory(tab);
+        if (requestId !== undoHistoryRequestId || activeTab !== tab) return;
+        undoCurrentBtn.disabled = history.length === 0;
+        undoCurrentBtn.textContent = history.length > 0
+          ? `↶ 撤销修改 (${history.length})`
+          : '↶ 撤销修改';
+        undoCurrentBtn.title = history.length > 0
+          ? `撤销 ${tab.name} 最近一次修改（共 ${history.length} 次可撤销）`
+          : `${tab.name} 没有可撤销的修改`;
+      } catch (e) {
+        if (requestId !== undoHistoryRequestId || activeTab !== tab) return;
+        undoCurrentBtn.disabled = true;
+        undoCurrentBtn.title = `无法获取修改历史：${e.message}`;
+      }
+    }
+
+    undoCurrentBtn.addEventListener('click', async () => {
+      const tab = activeTab;
+      if (!tab) return;
+
+      undoCurrentBtn.disabled = true;
+      try {
+        const history = await getFileHistory(tab);
+        if (activeTab !== tab) return;
+        if (history.length === 0) {
+          alert(`${tab.name} 没有可撤销的修改`);
+          return;
+        }
+
+        const latest = history[history.length - 1];
+        const action = latest.action_desc || `快照 ${latest.snapshot_id}`;
+        if (!confirm(`确定撤销 ${tab.name} 最近一次修改吗？\n\n${action}\n\n当前编辑器中未保存的内容也会被恢复结果覆盖。`)) return;
+
+        const resp = await fetch('/api/code/undo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: currentSessionId,
+            filepath: tab.filepath,
+          }),
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+          throw new Error(err.error || '撤销失败');
+        }
+        const data = await resp.json();
+        if (data.status !== 'undone') {
+          throw new Error(data.status === 'no_history' ? '没有可撤销的修改' : '撤销失败');
+        }
+
+        await refreshModifiedFilesAfterConfirm([{ filepath: tab.filepath }]);
+        statusProject.textContent = `↩️ 已撤销 ${tab.name} 的最近一次修改`;
+        appendMessage('assistant', `↩️ 已撤销 ${tab.name} 的最近一次修改，剩余 ${data.remaining_undos} 次可撤销。`);
+        setTimeout(() => {
+          statusProject.textContent = `● 工作区: ${projectNameDisplay.textContent}`;
+        }, 4000);
+      } catch (e) {
+        alert('撤销失败: ' + e.message);
+      } finally {
+        await refreshUndoButton();
+      }
+    });
 
     async function saveCurrentFile() {
       if (!activeTab) return;
@@ -1637,6 +1817,7 @@
         const data = await resp.json();
         if (data.status === 'saved') {
           statusProject.textContent = `✅ 已保存 ${activeTab.name}（快照ID=${data.snapshot_id}）`;
+          await refreshUndoButton();
           setTimeout(() => {
             statusProject.textContent = `● 工作区: ${projectNameDisplay.textContent}`;
           }, 3000);
@@ -1972,25 +2153,54 @@
       return parts[parts.length - 1] || filepath;
     }
 
-    // 聊天响应后检查是否有待确认修改
-    async function checkPendingModifications() {
+    function updatePendingPreviewButton(count, errorMessage = '') {
+      const normalizedCount = Math.max(0, Number(count) || 0);
+      pendingPreviewCount.textContent = normalizedCount;
+      pendingPreviewCount.hidden = normalizedCount === 0;
+      pendingPreviewBtn.disabled = normalizedCount === 0;
+      pendingPreviewBtn.classList.toggle('has-pending', normalizedCount > 0);
+      pendingPreviewBtn.classList.toggle('pending-error', Boolean(errorMessage));
+      pendingPreviewBtn.title = errorMessage
+        ? `无法获取待确认修改：${errorMessage}`
+        : normalizedCount > 0
+          ? `打开 ${normalizedCount} 个待确认修改`
+          : '暂无待确认修改';
+    }
+
+    // 获取当前会话的待确认修改，并按需打开预览
+    async function loadPendingModifications({ showPreview = false } = {}) {
       try {
         const resp = await fetch(
           `/api/code/pending?session_id=${encodeURIComponent(currentSessionId)}`
         );
-        if (!resp.ok) return;
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
-        if (data.count > 0 && data.pending.length > 0) {
-          // 需要从 pending 中提取 old_content/new_content
-          // 但 /api/code/pending 只返回简化信息，需额外拿完整数据
-          // 这里 pending 列表已包含 old_content/new_content（由 preview_edit_impl 暂存）
-          pendingDiffData = data.pending;
+        pendingDiffData = Array.isArray(data.pending) ? data.pending : [];
+        updatePendingPreviewButton(pendingDiffData.length);
+        if (showPreview && pendingDiffData.length > 0) {
           showDiffPreview();
         }
+        return pendingDiffData;
       } catch (e) {
-        // 忽略检查错误
+        pendingDiffData = [];
+        updatePendingPreviewButton(0, e.message || '未知错误');
+        return [];
       }
     }
+
+    // 聊天响应后检查是否有待确认修改，并保留原有自动弹窗行为
+    async function checkPendingModifications() {
+      return loadPendingModifications({ showPreview: true });
+    }
+
+    pendingPreviewBtn.addEventListener('click', async () => {
+      pendingPreviewBtn.disabled = true;
+      try {
+        await loadPendingModifications({ showPreview: true });
+      } finally {
+        if (pendingDiffData.length > 0) pendingPreviewBtn.disabled = false;
+      }
+    });
 
     // 显示 Diff 预览模态框
     function showDiffPreview() {
@@ -2109,12 +2319,14 @@
         // 刷新被修改的文件标签
         const modifiedFiles = (data.results || []).filter(r => r.status === 'applied');
         await refreshModifiedFilesAfterConfirm(modifiedFiles);
+        await refreshUndoButton();
 
         // 部分失败或文件冲突：未应用的修改保留在待确认列表（服务端）
         const failedFiles = (data.results || []).filter(
           r => r.status === 'error' || r.status === 'conflict'
         );
         const conflictFiles = failedFiles.filter(r => r.status === 'conflict');
+        await loadPendingModifications({ showPreview: false });
         if (failedFiles.length > 0) {
           if (conflictFiles.length > 0) {
             statusProject.textContent = `⚠️ ${data.confirmed_count} 个已应用，${conflictFiles.length} 个冲突`;
@@ -2159,6 +2371,7 @@
 
         // 关闭模态框
         closeDiffPreview();
+        await loadPendingModifications({ showPreview: false });
 
         // 提示用户重新输入需求
         statusProject.textContent = `↩️ 已撤销 ${data.cancelled_count} 个修改`;
@@ -2248,6 +2461,42 @@
 
     function closeSessionsPanel() {
       sessionsOverlay.classList.remove('active');
+    }
+
+    // 页面刷新后恢复 localStorage 所指向的当前会话消息。
+    async function restoreCurrentSessionHistory() {
+      const sessionId = currentSessionId;
+      questionInput.disabled = true;
+      submitBtn.disabled = true;
+      try {
+        const resp = await fetch(
+          `/api/sessions/${encodeURIComponent(sessionId)}/messages`
+        );
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        if (sessionId !== currentSessionId) return;
+
+        const messages = Array.isArray(data.messages) ? data.messages : [];
+        if (messages.length === 0) return;
+
+        chatArea.innerHTML = '';
+        for (const message of messages) {
+          appendMessage(
+            message.role === 'user' ? 'user' : 'assistant',
+            message.content
+          );
+        }
+      } catch (e) {
+        if (sessionId === currentSessionId) {
+          appendMessage('assistant', `⚠️ 当前会话记录加载失败：${e.message}`);
+        }
+      } finally {
+        if (sessionId === currentSessionId) {
+          questionInput.disabled = false;
+          submitBtn.disabled = false;
+          questionInput.focus();
+        }
+      }
     }
 
     async function loadSessionsList() {
@@ -2368,6 +2617,7 @@
         }
 
         const failed = await rebindProjectsToSession(projectPaths, sessionId);
+        await refreshUndoButton();
         if (failed.length > 0) {
           statusProject.textContent = `⚠️ ${failed.length} 个项目重新绑定失败`;
           appendMessage('assistant', `⚠️ 已切换历史会话，但以下项目重新绑定失败：\n${failed.map(item => `  • ${item.projectPath}: ${item.error}`).join('\n')}\n\n请重新打开这些项目后再继续。`);
@@ -2397,6 +2647,12 @@
     });
 
     // ---- 页面加载时检查健康状态 ----
+    async function initializeCurrentSession() {
+      await restoreCurrentSessionHistory();
+      await loadPendingModifications({ showPreview: true });
+    }
+    initializeCurrentSession();
+
     fetch('/api/health')
       .then(r => r.json())
       .then(data => {
