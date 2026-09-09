@@ -858,6 +858,14 @@ def _route_after_reflector(state: CodeState) -> str:
 # 每个 thread_id 对应一个独立的状态机执行流（用 task_id 隔离）
 _CHECKPOINTER = MemorySaver()
 
+
+def delete_code_checkpoints(thread_ids: list[str]) -> int:
+    """清除指定 LangGraph thread_id 的内存 checkpoint。"""
+    unique_thread_ids = list(dict.fromkeys(thread_ids))
+    for thread_id in unique_thread_ids:
+        _CHECKPOINTER.delete_thread(thread_id)
+    return len(unique_thread_ids)
+
 # interrupt_before 配置：在 executor 节点前自动暂停
 #   - executor 是循环执行节点，每次进入前都停一下
 #   - CodeGenSkill.execute 在外层循环驱动，检查暂停/取消信号后 resume
@@ -1053,6 +1061,11 @@ class CodeGenSkill(BaseSkill):
             #     invoke(None, config) 从 checkpoint 恢复，执行下一个节点
             #     遇到 interrupt_before 会再次停下；走到 END 则 next 变空
             graph.invoke(None, config)
+
+        if task_control is not None and task_control.is_cancelled:
+            _CHECKPOINTER.delete_thread(thread_id)
+            print(f"===== [CodeGenSkill] 状态机已取消并清理 checkpoint =====\n")
+            return "（任务已取消，未生成总结）", []
 
         # ---- 第 3 步：获取最终状态 ----
         final_state = graph.get_state(config).values

@@ -239,6 +239,27 @@ def _get_session_size(session_dir: Path) -> int:
     return sum(f.stat().st_size for f in session_dir.iterdir() if f.is_file())
 
 
+def _delete_session_uploads(session_id: str) -> int:
+    """删除指定会话通过上传接口创建的文件，并返回删除数量。"""
+    safe_sid = _FILENAME_SAFE_RE.sub("_", session_id)
+    upload_root = Path(UPLOAD_DIR).resolve()
+    session_dir = upload_root / safe_sid
+    if not session_dir.exists() or not session_dir.is_dir():
+        return 0
+
+    deleted_count = 0
+    for item in session_dir.iterdir():
+        if item.is_file() or item.is_symlink():
+            item.unlink()
+            deleted_count += 1
+    try:
+        session_dir.rmdir()
+    except OSError:
+        # 上传接口只创建平铺文件；若目录中存在外部创建的子目录则保留目录。
+        pass
+    return deleted_count
+
+
 # ===================== 路由 =====================
 
 @app.get("/", response_class=HTMLResponse)
@@ -365,10 +386,55 @@ async def session_messages(session_id: str, limit: int = Query(default=500, ge=1
 
 @app.delete("/api/sessions/{session_id}")
 async def delete_session(session_id: str):
-    """删除指定会话的全部历史消息（不可恢复）。"""
-    store = get_memory_store()
-    store.clear(session_id)
-    return {"session_id": session_id, "status": "deleted"}
+    """删除会话历史，并清理任务、工作区、待确认修改和上传文件。"""
+    from core.task_manager import cancel_tasks_for_session, get_task_ids_for_session
+    from skills.code_gen import delete_code_checkpoints
+
+    task_ids = get_task_ids_for_session(session_id)
+    checkpoint_thread_ids = task_ids + [f"codegen-{session_id}"]
+
+    cleanup = {
+        "tasks_cancelled": 0,
+        "checkpoints_deleted": 0,
+        "workspaces_removed": 0,
+        "pending_cancelled": 0,
+        "uploads_deleted": 0,
+    }
+    cleanup_errors = []
+
+    cleanup_steps = (
+        ("tasks", lambda: cleanup.update(
+            tasks_cancelled=cancel_tasks_for_session(session_id)
+        )),
+        ("checkpoints", lambda: cleanup.update(
+            checkpoints_deleted=delete_code_checkpoints(checkpoint_thread_ids)
+        )),
+        ("workspaces", lambda: cleanup.update(
+            workspaces_removed=remove_session_workspace(session_id)
+        )),
+        ("pending", lambda: cleanup.update(
+            pending_cancelled=cancel_modifications(
+                session_id=session_id
+            ).get("cancelled_count", 0)
+        )),
+        ("uploads", lambda: cleanup.update(
+            uploads_deleted=_delete_session_uploads(session_id)
+        )),
+        ("history", lambda: get_memory_store().clear(session_id)),
+    )
+
+    for resource, cleanup_step in cleanup_steps:
+        try:
+            cleanup_step()
+        except Exception as e:
+            cleanup_errors.append({"resource": resource, "error": str(e)})
+
+    return {
+        "session_id": session_id,
+        "status": "deleted" if not cleanup_errors else "partial_deleted",
+        "cleanup": cleanup,
+        "cleanup_errors": cleanup_errors,
+    }
 
 
 @app.get("/api/task/{task_id}/status")
