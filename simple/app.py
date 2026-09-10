@@ -19,6 +19,7 @@
 #   4. sources 字段把 Document 序列化为 dict，前端可直接渲染引用列表
 #   5. 撤销/历史接口直接复用 tools.code_tool 的 undo_last / get_history
 
+import hashlib
 import time
 from pathlib import Path
 import re
@@ -87,6 +88,7 @@ class ChatResponse(BaseModel):
 
 class CodeUndoRequest(BaseModel):
     """代码撤销请求体。"""
+    session_id: str              # 会话 ID，用于定位会话快照并校验动态工作区
     filepath: str                 # 要撤销修改的文件绝对路径
 
 
@@ -96,6 +98,7 @@ class CodeUndoResponse(BaseModel):
     snapshot_id: int               # 本次撤销的快照 ID（0 表示无历史可撤销）
     remaining_undos: int           # 剩余可撤销次数
     status: str                    # "undone" / "no_history" / "disabled" / "error"
+    error: str = ""
 
 
 class CodeHistoryItem(BaseModel):
@@ -177,6 +180,7 @@ class WorkspaceFileResponse(BaseModel):
     filepath: str
     content: str
     size: int
+    content_sha256: str
 
 
 class WorkspaceSaveRequest(BaseModel):
@@ -184,14 +188,16 @@ class WorkspaceSaveRequest(BaseModel):
     session_id: str
     filepath: str
     content: str
+    base_content_sha256: str
 
 
 class WorkspaceSaveResponse(BaseModel):
     """保存工作区文件响应体。"""
-    status: str                        # "saved" / "error"
+    status: str                        # "saved" / "conflict" / "error"
     snapshot_id: int = 0               # 快照 ID（0 表示新文件无快照）
     filepath: str = ""
     error: str = ""
+    content_sha256: str = ""
 
 
 # ===================== 上传文件辅助函数 =====================
@@ -236,6 +242,27 @@ def _get_session_size(session_dir: Path) -> int:
     if not session_dir.exists():
         return 0
     return sum(f.stat().st_size for f in session_dir.iterdir() if f.is_file())
+
+
+def _delete_session_uploads(session_id: str) -> int:
+    """删除指定会话通过上传接口创建的文件，并返回删除数量。"""
+    safe_sid = _FILENAME_SAFE_RE.sub("_", session_id)
+    upload_root = Path(UPLOAD_DIR).resolve()
+    session_dir = upload_root / safe_sid
+    if not session_dir.exists() or not session_dir.is_dir():
+        return 0
+
+    deleted_count = 0
+    for item in session_dir.iterdir():
+        if item.is_file() or item.is_symlink():
+            item.unlink()
+            deleted_count += 1
+    try:
+        session_dir.rmdir()
+    except OSError:
+        # 上传接口只创建平铺文件；若目录中存在外部创建的子目录则保留目录。
+        pass
+    return deleted_count
 
 
 # ===================== 路由 =====================
@@ -364,10 +391,55 @@ async def session_messages(session_id: str, limit: int = Query(default=500, ge=1
 
 @app.delete("/api/sessions/{session_id}")
 async def delete_session(session_id: str):
-    """删除指定会话的全部历史消息（不可恢复）。"""
-    store = get_memory_store()
-    store.clear(session_id)
-    return {"session_id": session_id, "status": "deleted"}
+    """删除会话历史，并清理任务、工作区、待确认修改和上传文件。"""
+    from core.task_manager import cancel_tasks_for_session, get_task_ids_for_session
+    from skills.code_gen import delete_code_checkpoints
+
+    task_ids = get_task_ids_for_session(session_id)
+    checkpoint_thread_ids = task_ids + [f"codegen-{session_id}"]
+
+    cleanup = {
+        "tasks_cancelled": 0,
+        "checkpoints_deleted": 0,
+        "workspaces_removed": 0,
+        "pending_cancelled": 0,
+        "uploads_deleted": 0,
+    }
+    cleanup_errors = []
+
+    cleanup_steps = (
+        ("tasks", lambda: cleanup.update(
+            tasks_cancelled=cancel_tasks_for_session(session_id)
+        )),
+        ("checkpoints", lambda: cleanup.update(
+            checkpoints_deleted=delete_code_checkpoints(checkpoint_thread_ids)
+        )),
+        ("workspaces", lambda: cleanup.update(
+            workspaces_removed=remove_session_workspace(session_id)
+        )),
+        ("pending", lambda: cleanup.update(
+            pending_cancelled=cancel_modifications(
+                session_id=session_id
+            ).get("cancelled_count", 0)
+        )),
+        ("uploads", lambda: cleanup.update(
+            uploads_deleted=_delete_session_uploads(session_id)
+        )),
+        ("history", lambda: get_memory_store().clear(session_id)),
+    )
+
+    for resource, cleanup_step in cleanup_steps:
+        try:
+            cleanup_step()
+        except Exception as e:
+            cleanup_errors.append({"resource": resource, "error": str(e)})
+
+    return {
+        "session_id": session_id,
+        "status": "deleted" if not cleanup_errors else "partial_deleted",
+        "cleanup": cleanup,
+        "cleanup_errors": cleanup_errors,
+    }
 
 
 @app.get("/api/task/{task_id}/status")
@@ -460,7 +532,7 @@ async def code_undo(req: CodeUndoRequest):
 
     使用方式：
         POST /api/code/undo
-        Body: {"filepath": "d:/workspace/project/src/main.py"}
+        Body: {"session_id": "web-abc123", "filepath": "d:/workspace/project/src/main.py"}
 
     返回：
         - status="undone"      → 撤销成功，文件已恢复
@@ -484,12 +556,13 @@ async def code_undo(req: CodeUndoRequest):
         )
 
     try:
-        result = undo_last(filepath)
+        result = undo_last(filepath, session_id=req.session_id)
         return CodeUndoResponse(
             filepath=filepath,
             snapshot_id=result.get("snapshot_id", 0),
             remaining_undos=result.get("remaining_undos", 0),
             status=result.get("status", "error"),
+            error=result.get("error", ""),
         )
     except ValueError as e:
         # 路径安全校验失败
@@ -505,11 +578,14 @@ async def code_undo(req: CodeUndoRequest):
 
 
 @app.get("/api/code/history", response_model=list[CodeHistoryItem])
-async def code_history(filepath: str):
+async def code_history(
+    filepath: str,
+    session_id: str = Query(..., description="会话 ID，用于定位会话快照"),
+):
     """查询指定文件的修改历史列表。
 
     使用方式：
-        GET /api/code/history?filepath=d:/workspace/project/src/main.py
+        GET /api/code/history?session_id=web-abc123&filepath=d:/workspace/project/src/main.py
 
     返回：按 snapshot_id 升序排列的历史记录列表。
     """
@@ -524,7 +600,7 @@ async def code_history(filepath: str):
         return []
 
     try:
-        history = get_history(filepath)
+        history = get_history(filepath, session_id=session_id)
         return [
             CodeHistoryItem(
                 snapshot_id=item.get("snapshot_id", 0),
@@ -924,6 +1000,7 @@ async def workspace_file(
         filepath=filepath,
         content=content,
         size=len(content.encode("utf-8")),
+        content_sha256=hashlib.sha256(content.encode("utf-8")).hexdigest(),
     )
 
 
@@ -943,7 +1020,19 @@ async def workspace_save(req: WorkspaceSaveRequest):
             status_code=403,
         )
 
-    result = save_workspace_file_impl(req.filepath, req.content, session_id=req.session_id)
+    result = save_workspace_file_impl(
+        req.filepath,
+        req.content,
+        session_id=req.session_id,
+        base_content_sha256=req.base_content_sha256,
+    )
+    if result.get("status") == "conflict":
+        return WorkspaceSaveResponse(
+            status="conflict",
+            filepath=result.get("filepath", req.filepath),
+            error=result["error"],
+            content_sha256=result.get("content_sha256", ""),
+        )
     if "error" in result:
         return WorkspaceSaveResponse(
             status="error",
@@ -953,6 +1042,7 @@ async def workspace_save(req: WorkspaceSaveRequest):
         status=result["status"],
         snapshot_id=result.get("snapshot_id", 0),
         filepath=result.get("filepath", req.filepath),
+        content_sha256=result.get("content_sha256", ""),
     )
 
 

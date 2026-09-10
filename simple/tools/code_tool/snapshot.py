@@ -21,7 +21,8 @@ from pathlib import Path
 
 from config import CODE_HISTORY_DIR, MAX_SNAPSHOTS_PER_FILE
 
-from tools.code_tool.path_security import _validate_path
+from tools.code_tool.atomic_write import atomic_write_text
+from tools.code_tool.path_security import _validate_path, _validate_write_path
 
 
 def _get_history_dir(filepath: str, session_id: str = None) -> Path:
@@ -85,6 +86,40 @@ def _create_snapshot(filepath: str, action_desc: str, session_id: str = None) ->
     return next_id
 
 
+def _create_creation_snapshot(
+    filepath: str,
+    new_content: str,
+    action_desc: str,
+    session_id: str = None,
+) -> int:
+    """记录一次新文件创建，使撤销能够安全删除该文件。"""
+    p = _validate_write_path(filepath, session_id)
+    if p.exists():
+        raise ValueError(f"创建快照要求目标文件不存在: {p}")
+
+    history_dir = _get_history_dir(filepath, session_id)
+    existing = history_dir.glob("*.snapshot")
+    next_id = max((int(f.stem) for f in existing), default=0) + 1
+
+    # 空 snapshot 作为统一的历史栈条目；实际撤销行为由元数据类型决定。
+    (history_dir / f"{next_id:03d}.snapshot").write_text("", encoding="utf-8")
+    meta = {
+        "snapshot_id": next_id,
+        "filename": p.name,
+        "filepath": str(p),
+        "timestamp": time.time(),
+        "action_desc": action_desc,
+        "snapshot_type": "creation",
+        "content_sha256": hashlib.sha256(new_content.encode("utf-8")).hexdigest(),
+    }
+    (history_dir / f"{next_id:03d}.meta.json").write_text(
+        json.dumps(meta, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    _cleanup_old_snapshots(history_dir)
+    return next_id
+
+
 def _cleanup_old_snapshots(history_dir: Path) -> int:
     """清理超出 MAX_SNAPSHOTS_PER_FILE 的最旧快照。
 
@@ -104,6 +139,25 @@ def _cleanup_old_snapshots(history_dir: Path) -> int:
     return deleted
 
 
+def _discard_snapshot(
+    filepath: str,
+    snapshot_id: int,
+    session_id: str = None,
+) -> bool:
+    """删除一次尚未提交成功的快照及其元数据。"""
+    if snapshot_id <= 0:
+        return False
+    history_dir = _get_history_dir(filepath, session_id)
+    snapshot_path = history_dir / f"{snapshot_id:03d}.snapshot"
+    meta_path = history_dir / f"{snapshot_id:03d}.meta.json"
+    removed = False
+    for path in (snapshot_path, meta_path):
+        if path.exists():
+            path.unlink()
+            removed = True
+    return removed
+
+
 def undo_last(filepath: str, session_id: str = None) -> dict:
     """撤销最近一次修改，恢复到上一个快照。
 
@@ -121,14 +175,29 @@ def undo_last(filepath: str, session_id: str = None) -> dict:
     # 取最新的快照
     latest_snapshot = existing[-1]
     latest_id = int(latest_snapshot.stem)
-    content = latest_snapshot.read_text(encoding="utf-8")
+    meta_path = history_dir / f"{latest_id:03d}.meta.json"
+    meta = {}
+    if meta_path.exists():
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
 
-    # 恢复文件内容
-    p.write_text(content, encoding="utf-8")
+    if meta.get("snapshot_type") == "creation":
+        expected_hash = meta.get("content_sha256", "")
+        if p.exists():
+            current_hash = hashlib.sha256(p.read_bytes()).hexdigest()
+            if current_hash != expected_hash:
+                return {
+                    "snapshot_id": latest_id,
+                    "remaining_undos": len(existing),
+                    "status": "conflict",
+                    "error": "新建文件在创建后已发生变化，为避免误删，请先检查文件内容",
+                }
+            p.unlink()
+    else:
+        content = latest_snapshot.read_text(encoding="utf-8")
+        atomic_write_text(p, content)
 
     # 删除已恢复的快照和元数据
     latest_snapshot.unlink()
-    meta_path = history_dir / f"{latest_id:03d}.meta.json"
     if meta_path.exists():
         meta_path.unlink()
 

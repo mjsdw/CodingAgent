@@ -31,6 +31,8 @@ from tools.code_tool.snapshot import (
     undo_last,
     get_history,
     _create_snapshot,
+    _create_creation_snapshot,
+    _discard_snapshot,
     _get_history_dir,
 )
 

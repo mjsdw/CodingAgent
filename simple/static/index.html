@@ -107,7 +107,7 @@
       font-weight: 500;
       letter-spacing: 0;
     }
-    #open-project-btn {
+    #open-project-btn, #close-project-btn {
       background: var(--surface-2);
       color: var(--text);
       border: 1px solid var(--border);
@@ -124,9 +124,9 @@
       gap: 5px;
       height: 24px;
     }
-    #open-project-btn:hover { background: #fff; border-color: var(--border-strong); box-shadow: var(--shadow-xs); }
-    #open-project-btn:active { transform: translateY(0); }
-    #open-project-btn:disabled { background: var(--surface-2); color: var(--text-subtle); cursor: not-allowed; box-shadow: none; transform: none; opacity: 0.7; }
+    #open-project-btn:hover, #close-project-btn:hover { background: #fff; border-color: var(--border-strong); box-shadow: var(--shadow-xs); }
+    #open-project-btn:active, #close-project-btn:active { transform: translateY(0); }
+    #open-project-btn:disabled, #close-project-btn:disabled { background: var(--surface-2); color: var(--text-subtle); cursor: not-allowed; box-shadow: none; transform: none; opacity: 0.7; }
     #project-path-input {
       background: #fff;
       border: 1px solid var(--border);
@@ -343,12 +343,20 @@
       background: var(--editor-bg);
       overflow: hidden;
     }
-    #editor-tabs {
+    #editor-header {
       display: flex;
+      align-items: stretch;
       background: var(--surface);
       border-bottom: 1px solid var(--border);
-      overflow-x: auto;
+      min-height: 35px;
       flex-shrink: 0;
+    }
+    #editor-tabs {
+      flex: 1;
+      display: flex;
+      background: var(--surface);
+      overflow-x: auto;
+      min-width: 0;
       min-height: 35px;
     }
     #editor-tabs::-webkit-scrollbar { height: 0; }
@@ -396,6 +404,27 @@
     }
     .editor-tab:hover .close-btn, .editor-tab.active .close-btn { opacity: 0.5; }
     .editor-tab .close-btn:hover { opacity: 1; color: var(--error); background: var(--error-soft); }
+    #undo-current-btn {
+      min-width: 92px;
+      padding: 0 12px;
+      border: none;
+      border-left: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text-muted);
+      font: 500 11.5px var(--font-ui);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+    #undo-current-btn:hover:not(:disabled) {
+      color: var(--accent);
+      background: var(--accent-soft);
+    }
+    #undo-current-btn:disabled {
+      color: var(--text-subtle);
+      cursor: not-allowed;
+      opacity: 0.65;
+    }
     #editor-container {
       flex: 1;
       position: relative;
@@ -608,6 +637,55 @@
       background: #fff;
       box-shadow: 0 0 0 3px var(--accent-glow), var(--shadow-composer);
     }
+    #pending-preview-btn {
+      height: 32px;
+      padding: 0 10px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-md);
+      background: #fff;
+      color: var(--text-muted);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+      cursor: pointer;
+      font: 500 11.5px var(--font-ui);
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+    #pending-preview-btn.has-pending {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+    #pending-preview-btn.has-pending:hover {
+      background: #fff;
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    #pending-preview-btn:disabled {
+      color: var(--text-subtle);
+      border-color: var(--border);
+      background: var(--surface-3);
+      cursor: not-allowed;
+    }
+    #pending-preview-btn.pending-error {
+      color: var(--error);
+      border-color: #fecaca;
+      background: var(--error-soft);
+    }
+    #pending-preview-count {
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      border-radius: 9px;
+      color: #fff;
+      background: var(--accent);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font: 600 10px var(--font-mono);
+    }
+    #pending-preview-count[hidden] { display: none; }
     #question-input {
       flex: 1;
       background: transparent;
@@ -1048,6 +1126,7 @@
     <h1><span class="logo-dot"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg></span>CodeAgent</h1>
     <span class="subtitle" id="mode-label">IDE 模式</span>
     <button id="open-project-btn">打开项目</button>
+    <button id="close-project-btn" title="关闭当前显示的项目" disabled>关闭当前项目</button>
     <input type="text" id="project-path-input" placeholder="或手动输入项目路径，如 d:/myproject" style="display:none;">
     <button id="open-path-btn" style="display:none;">打开</button>
     <div class="header-spacer"></div>
@@ -1096,7 +1175,10 @@
 
     <!-- 中：编辑器 -->
     <div id="editor-pane">
-      <div id="editor-tabs"></div>
+      <div id="editor-header">
+        <div id="editor-tabs"></div>
+        <button type="button" id="undo-current-btn" title="请先打开一个文件" disabled>↶ 撤销修改</button>
+      </div>
       <div id="editor-container">
         <div id="editor-empty">
           <div class="welcome">
@@ -1137,6 +1219,10 @@
       <div id="chat-input-area">
         <form id="input-form">
           <div class="composer-wrap">
+            <button type="button" id="pending-preview-btn" title="暂无待确认修改" disabled>
+              <span>修改预览</span>
+              <span id="pending-preview-count" hidden>0</span>
+            </button>
             <input type="text" id="question-input" placeholder="问点什么，或让 Agent 修改代码..." autocomplete="off" autofocus>
             <button type="submit" id="submit-btn" title="发送">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>
@@ -1207,15 +1293,19 @@
     const inputForm = document.getElementById('input-form');
     const questionInput = document.getElementById('question-input');
     const submitBtn = document.getElementById('submit-btn');
+    const pendingPreviewBtn = document.getElementById('pending-preview-btn');
+    const pendingPreviewCount = document.getElementById('pending-preview-count');
     const modeLabel = document.getElementById('mode-label');
     const sessionInfo = document.getElementById('session-info');
     const clearBtn = document.getElementById('clear-btn');
     const openProjectBtn = document.getElementById('open-project-btn');
+    const closeProjectBtn = document.getElementById('close-project-btn');
     const projectPathInput = document.getElementById('project-path-input');
     const openPathBtn = document.getElementById('open-path-btn');
     const treeContainer = document.getElementById('tree-container');
     const projectNameDisplay = document.getElementById('project-name-display');
     const editorTabs = document.getElementById('editor-tabs');
+    const undoCurrentBtn = document.getElementById('undo-current-btn');
     const editorEmpty = document.getElementById('editor-empty');
     const monacoEditorDiv = document.getElementById('monaco-editor');
     const statusProject = document.getElementById('status-project');
@@ -1237,6 +1327,28 @@
     // 提交消息时捕获当前代际，轮询/渲染结果前比对——不一致说明用户已切换会话，
     // 旧任务的结果不再写入当前聊天区（其答案已存旧会话历史，切回可见）
     let chatEpoch = 0;
+    let currentWorkspacePaths = [];
+    let currentProjectPath = null;
+    const WORKSPACE_STORAGE_KEY = 'rag_workspace_paths';
+
+    function loadWorkspacePaths() {
+      try {
+        const stored = JSON.parse(localStorage.getItem(WORKSPACE_STORAGE_KEY) || '[]');
+        if (!Array.isArray(stored)) return [];
+        return [...new Set(stored.filter(path => typeof path === 'string' && path.trim()))];
+      } catch (e) {
+        localStorage.removeItem(WORKSPACE_STORAGE_KEY);
+        return [];
+      }
+    }
+
+    function saveWorkspacePaths(projectPaths) {
+      const normalized = [...new Set(
+        projectPaths.filter(path => typeof path === 'string' && path.trim())
+      )];
+      localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(normalized));
+    }
+
     function getSessionId() {
       let sid = localStorage.getItem('rag_session_id');
       if (!sid) {
@@ -1245,19 +1357,72 @@
       }
       return sid;
     }
-    function newSession(msg) {
+    async function rebindProjectsToSession(projectPaths, sessionId) {
+      const failed = [];
+      for (const projectPath of projectPaths) {
+        try {
+          const resp = await fetch('/api/workspace/open', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: sessionId, project_path: projectPath }),
+          });
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+            throw new Error(err.error || '重新绑定失败');
+          }
+        } catch (e) {
+          failed.push({ projectPath, error: e.message });
+        }
+      }
+      return failed;
+    }
+
+    async function restoreWorkspacePaths() {
+      const storedPaths = loadWorkspacePaths();
+      if (storedPaths.length === 0) return;
+
+      const failed = await rebindProjectsToSession(storedPaths, currentSessionId);
+      const failedPaths = new Set(failed.map(item => item.projectPath));
+      const restoredPaths = storedPaths.filter(path => !failedPaths.has(path));
+      currentWorkspacePaths = restoredPaths;
+
+      if (restoredPaths.length > 0) {
+        // openProject 会刷新根文件树，并根据后端实际结果校正 currentWorkspacePaths。
+        await openProject(restoredPaths[0]);
+      }
+      if (failed.length > 0) {
+        statusProject.textContent = `⚠️ ${failed.length} 个项目恢复失败`;
+        appendMessage('assistant', `⚠️ 以下项目在服务重启后恢复失败：\n${failed.map(item => `  • ${item.projectPath}: ${item.error}`).join('\n')}\n\n路径仍保存在当前浏览器中，下次刷新会再次尝试。`);
+      }
+    }
+
+    async function newSession(msg) {
       // 若有未确认的 diff 预览，先关闭（不调用 cancel，让旧会话 pending 自然遗留或由后端清理）
       if (diffOverlay.classList.contains('active')) {
         closeDiffPreview();
       }
+      const projectPaths = [...currentWorkspacePaths];
       const sid = 'web-' + Math.random().toString(36).substring(2, 10);
       localStorage.setItem('rag_session_id', sid);
       currentSessionId = sid;
       chatEpoch++;
       sessionInfo.textContent = `会话：${sid}`;
       chatArea.innerHTML = `<div class="message assistant"><div class="bubble">${msg || '已开启新会话。请提问。'}</div></div>`;
-      // 不清空已打开的项目（项目绑定独立于会话）
-      questionInput.focus();
+      questionInput.disabled = true;
+      submitBtn.disabled = true;
+      try {
+        const failed = await rebindProjectsToSession(projectPaths, sid);
+        await loadPendingModifications({ showPreview: false });
+        await refreshUndoButton();
+        if (failed.length > 0) {
+          statusProject.textContent = `⚠️ ${failed.length} 个项目重新绑定失败`;
+          appendMessage('assistant', `⚠️ 新会话已创建，但以下项目重新绑定失败：\n${failed.map(item => `  • ${item.projectPath}: ${item.error}`).join('\n')}\n\n请重新打开这些项目后再继续。`);
+        }
+      } finally {
+        questionInput.disabled = false;
+        submitBtn.disabled = false;
+        questionInput.focus();
+      }
     }
     let currentSessionId = getSessionId();
     sessionInfo.textContent = `会话：${currentSessionId}`;
@@ -1434,6 +1599,10 @@
         if (data.status === 'error') throw new Error(data.error || '打开失败');
 
         // 更新状态
+        currentWorkspacePaths = data.current_projects || [data.project_path];
+        currentProjectPath = data.project_path;
+        saveWorkspacePaths(currentWorkspacePaths);
+        closeProjectBtn.disabled = false;
         statusProject.textContent = `● 工作区: ${data.project_name}`;
         projectNameDisplay.textContent = data.project_name;
         modeLabel.textContent = `项目: ${data.project_name}`;
@@ -1496,6 +1665,71 @@
       if (e.key === 'Enter') openPathBtn.click();
     });
 
+    function normalizeWorkspacePath(path) {
+      return String(path || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+    }
+
+    function isPathInsideProject(filepath, projectPath) {
+      const normalizedFile = normalizeWorkspacePath(filepath);
+      const normalizedProject = normalizeWorkspacePath(projectPath);
+      return normalizedFile === normalizedProject
+        || normalizedFile.startsWith(normalizedProject + '/');
+    }
+
+    async function closeCurrentProject() {
+      if (!currentProjectPath) return;
+      const projectPath = currentProjectPath;
+      const projectTabs = openTabs.filter(
+        tab => isPathInsideProject(tab.filepath, projectPath)
+      );
+      if (!confirmDiscardUnsavedChanges(projectTabs, '关闭当前项目')) return;
+      closeProjectBtn.disabled = true;
+      closeProjectBtn.textContent = '关闭中...';
+
+      try {
+        const query = new URLSearchParams({
+          session_id: currentSessionId,
+          project_path: projectPath,
+        });
+        const resp = await fetch('/api/workspace/close?' + query.toString(), {
+          method: 'POST',
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+          throw new Error(err.error || '关闭失败');
+        }
+        const data = await resp.json();
+        if (!data.removed_count) throw new Error('后端未找到当前项目，请刷新后重试');
+
+        currentWorkspacePaths = currentWorkspacePaths.filter(
+          path => normalizeWorkspacePath(path) !== normalizeWorkspacePath(projectPath)
+        );
+        saveWorkspacePaths(currentWorkspacePaths);
+        for (const tab of [...openTabs]) {
+          if (isPathInsideProject(tab.filepath, projectPath)) {
+            closeTab(tab, { skipUnsavedCheck: true });
+          }
+        }
+
+        currentProjectPath = null;
+        if (currentWorkspacePaths.length > 0) {
+          await openProject(currentWorkspacePaths[0]);
+        } else {
+          treeContainer.innerHTML = '<div class="tree-empty">点击「打开项目」选择目录</div>';
+          projectNameDisplay.textContent = '';
+          modeLabel.textContent = 'IDE 模式';
+          statusProject.textContent = '● 未打开项目';
+        }
+      } catch (e) {
+        alert('关闭项目失败: ' + e.message);
+      } finally {
+        closeProjectBtn.textContent = '关闭当前项目';
+        closeProjectBtn.disabled = !currentProjectPath;
+      }
+    }
+
+    closeProjectBtn.addEventListener('click', closeCurrentProject);
+
     // ---- 编辑器标签页 + 文件读取/保存 ----
     async function openFile(filepath, filename) {
       // 已打开则切换
@@ -1525,7 +1759,14 @@
         const model = monaco.editor.createModel(data.content, lang);
         models.set(filepath, model);
 
-        const tab = { filepath, name: filename, lang, model };
+        const tab = {
+          filepath,
+          name: filename,
+          lang,
+          model,
+          savedContent: data.content,
+          savedContentSha256: data.content_sha256,
+        };
         openTabs.push(tab);
         renderTabs();
         switchTab(tab);
@@ -1560,11 +1801,29 @@
         statusLang.textContent = tab.lang;
         renderTabs();
       }
+      refreshUndoButton();
     }
 
-    function closeTab(tab) {
+    function hasUnsavedChanges(tab) {
+      return Boolean(tab && tab.model && tab.model.getValue() !== tab.savedContent);
+    }
+
+    function confirmDiscardUnsavedChanges(tabs, actionLabel) {
+      const dirtyTabs = tabs.filter(hasUnsavedChanges);
+      if (dirtyTabs.length === 0) return true;
+      const names = dirtyTabs.map(tab => `• ${tab.name}`).join('\n');
+      return confirm(
+        `${actionLabel}会丢弃以下未保存修改：\n\n${names}\n\n确定放弃修改并继续吗？`
+      );
+    }
+
+    function closeTab(tab, { skipUnsavedCheck = false } = {}) {
       const idx = openTabs.indexOf(tab);
-      if (idx === -1) return;
+      if (idx === -1) return false;
+      if (!skipUnsavedCheck
+          && !confirmDiscardUnsavedChanges([tab], `关闭 ${tab.name}`)) {
+        return false;
+      }
       openTabs.splice(idx, 1);
       tab.model.dispose();
       models.delete(tab.filepath);
@@ -1581,19 +1840,113 @@
         }
       }
       renderTabs();
+      refreshUndoButton();
+      return true;
     }
+
+    let undoHistoryRequestId = 0;
+
+    async function getFileHistory(tab) {
+      const query = new URLSearchParams({
+        session_id: currentSessionId,
+        filepath: tab.filepath,
+      });
+      const resp = await fetch('/api/code/history?' + query.toString());
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+        throw new Error(err.error || '修改历史加载失败');
+      }
+      const data = await resp.json();
+      return Array.isArray(data) ? data : [];
+    }
+
+    async function refreshUndoButton() {
+      const tab = activeTab;
+      const requestId = ++undoHistoryRequestId;
+      undoCurrentBtn.disabled = true;
+      undoCurrentBtn.textContent = '↶ 撤销修改';
+      undoCurrentBtn.title = tab ? '正在检查修改历史...' : '请先打开一个文件';
+      if (!tab) return;
+
+      try {
+        const history = await getFileHistory(tab);
+        if (requestId !== undoHistoryRequestId || activeTab !== tab) return;
+        undoCurrentBtn.disabled = history.length === 0;
+        undoCurrentBtn.textContent = history.length > 0
+          ? `↶ 撤销修改 (${history.length})`
+          : '↶ 撤销修改';
+        undoCurrentBtn.title = history.length > 0
+          ? `撤销 ${tab.name} 最近一次修改（共 ${history.length} 次可撤销）`
+          : `${tab.name} 没有可撤销的修改`;
+      } catch (e) {
+        if (requestId !== undoHistoryRequestId || activeTab !== tab) return;
+        undoCurrentBtn.disabled = true;
+        undoCurrentBtn.title = `无法获取修改历史：${e.message}`;
+      }
+    }
+
+    undoCurrentBtn.addEventListener('click', async () => {
+      const tab = activeTab;
+      if (!tab) return;
+
+      undoCurrentBtn.disabled = true;
+      try {
+        const history = await getFileHistory(tab);
+        if (activeTab !== tab) return;
+        if (history.length === 0) {
+          alert(`${tab.name} 没有可撤销的修改`);
+          return;
+        }
+
+        const latest = history[history.length - 1];
+        const action = latest.action_desc || `快照 ${latest.snapshot_id}`;
+        if (!confirm(`确定撤销 ${tab.name} 最近一次修改吗？\n\n${action}\n\n当前编辑器中未保存的内容也会被恢复结果覆盖。`)) return;
+
+        const resp = await fetch('/api/code/undo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: currentSessionId,
+            filepath: tab.filepath,
+          }),
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+          throw new Error(err.error || '撤销失败');
+        }
+        const data = await resp.json();
+        if (data.status !== 'undone') {
+          throw new Error(
+            data.error || (data.status === 'no_history' ? '没有可撤销的修改' : '撤销失败')
+          );
+        }
+
+        await refreshModifiedFilesAfterConfirm([{ filepath: tab.filepath }]);
+        statusProject.textContent = `↩️ 已撤销 ${tab.name} 的最近一次修改`;
+        appendMessage('assistant', `↩️ 已撤销 ${tab.name} 的最近一次修改，剩余 ${data.remaining_undos} 次可撤销。`);
+        setTimeout(() => {
+          statusProject.textContent = `● 工作区: ${projectNameDisplay.textContent}`;
+        }, 4000);
+      } catch (e) {
+        alert('撤销失败: ' + e.message);
+      } finally {
+        await refreshUndoButton();
+      }
+    });
 
     async function saveCurrentFile() {
       if (!activeTab) return;
-      const content = activeTab.model.getValue();
+      const tab = activeTab;
+      const content = tab.model.getValue();
       try {
         const resp = await fetch('/api/workspace/save', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             session_id: currentSessionId,
-            filepath: activeTab.filepath,
+            filepath: tab.filepath,
             content: content,
+            base_content_sha256: tab.savedContentSha256,
           }),
         });
         if (!resp.ok) {
@@ -1601,8 +1954,14 @@
           throw new Error(err.error || '保存失败');
         }
         const data = await resp.json();
+        if (data.status === 'conflict') {
+          throw new Error(data.error || '磁盘文件已被外部修改，请重新打开文件或手动合并');
+        }
         if (data.status === 'saved') {
-          statusProject.textContent = `✅ 已保存 ${activeTab.name}（快照ID=${data.snapshot_id}）`;
+          tab.savedContent = content;
+          tab.savedContentSha256 = data.content_sha256;
+          statusProject.textContent = `✅ 已保存 ${tab.name}（快照ID=${data.snapshot_id}）`;
+          await refreshUndoButton();
           setTimeout(() => {
             statusProject.textContent = `● 工作区: ${projectNameDisplay.textContent}`;
           }, 3000);
@@ -1903,6 +2262,8 @@
               // 文件被修改，更新编辑器内容（保留光标位置）
               const position = editor.getPosition();
               tab.model.setValue(fileData.content);
+              tab.savedContent = fileData.content;
+              tab.savedContentSha256 = fileData.content_sha256;
               if (tab === activeTab && position) {
                 editor.setPosition(position);
               }
@@ -1938,25 +2299,54 @@
       return parts[parts.length - 1] || filepath;
     }
 
-    // 聊天响应后检查是否有待确认修改
-    async function checkPendingModifications() {
+    function updatePendingPreviewButton(count, errorMessage = '') {
+      const normalizedCount = Math.max(0, Number(count) || 0);
+      pendingPreviewCount.textContent = normalizedCount;
+      pendingPreviewCount.hidden = normalizedCount === 0;
+      pendingPreviewBtn.disabled = normalizedCount === 0;
+      pendingPreviewBtn.classList.toggle('has-pending', normalizedCount > 0);
+      pendingPreviewBtn.classList.toggle('pending-error', Boolean(errorMessage));
+      pendingPreviewBtn.title = errorMessage
+        ? `无法获取待确认修改：${errorMessage}`
+        : normalizedCount > 0
+          ? `打开 ${normalizedCount} 个待确认修改`
+          : '暂无待确认修改';
+    }
+
+    // 获取当前会话的待确认修改，并按需打开预览
+    async function loadPendingModifications({ showPreview = false } = {}) {
       try {
         const resp = await fetch(
           `/api/code/pending?session_id=${encodeURIComponent(currentSessionId)}`
         );
-        if (!resp.ok) return;
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
-        if (data.count > 0 && data.pending.length > 0) {
-          // 需要从 pending 中提取 old_content/new_content
-          // 但 /api/code/pending 只返回简化信息，需额外拿完整数据
-          // 这里 pending 列表已包含 old_content/new_content（由 preview_edit_impl 暂存）
-          pendingDiffData = data.pending;
+        pendingDiffData = Array.isArray(data.pending) ? data.pending : [];
+        updatePendingPreviewButton(pendingDiffData.length);
+        if (showPreview && pendingDiffData.length > 0) {
           showDiffPreview();
         }
+        return pendingDiffData;
       } catch (e) {
-        // 忽略检查错误
+        pendingDiffData = [];
+        updatePendingPreviewButton(0, e.message || '未知错误');
+        return [];
       }
     }
+
+    // 聊天响应后检查是否有待确认修改，并保留原有自动弹窗行为
+    async function checkPendingModifications() {
+      return loadPendingModifications({ showPreview: true });
+    }
+
+    pendingPreviewBtn.addEventListener('click', async () => {
+      pendingPreviewBtn.disabled = true;
+      try {
+        await loadPendingModifications({ showPreview: true });
+      } finally {
+        if (pendingDiffData.length > 0) pendingPreviewBtn.disabled = false;
+      }
+    });
 
     // 显示 Diff 预览模态框
     function showDiffPreview() {
@@ -2075,12 +2465,22 @@
         // 刷新被修改的文件标签
         const modifiedFiles = (data.results || []).filter(r => r.status === 'applied');
         await refreshModifiedFilesAfterConfirm(modifiedFiles);
+        await refreshUndoButton();
 
-        // 部分失败：失败的修改保留在待确认列表（服务端），提示用户重试
-        const failedFiles = (data.results || []).filter(r => r.status === 'error');
+        // 部分失败或文件冲突：未应用的修改保留在待确认列表（服务端）
+        const failedFiles = (data.results || []).filter(
+          r => r.status === 'error' || r.status === 'conflict'
+        );
+        const conflictFiles = failedFiles.filter(r => r.status === 'conflict');
+        await loadPendingModifications({ showPreview: false });
         if (failedFiles.length > 0) {
-          statusProject.textContent = `⚠️ ${data.confirmed_count} 个已应用，${failedFiles.length} 个失败`;
-          appendMessage('assistant', `⚠️ 部分修改未应用（${data.confirmed_count} 个成功，${failedFiles.length} 个失败）。\n\n失败文件：\n${failedFiles.map(r => `  • ${getFilename(r.filepath)}`).join('\n')}\n\n失败原因：${failedFiles[0].error || '未知'}\n\n失败的修改仍保留在待确认列表，处理后（如重新打开项目）发送任意消息即可重新预览并确认。`);
+          if (conflictFiles.length > 0) {
+            statusProject.textContent = `⚠️ ${data.confirmed_count} 个已应用，${conflictFiles.length} 个冲突`;
+            appendMessage('assistant', `⚠️ ${conflictFiles.length} 个修改未应用：文件在预览后已发生变化。\n\n冲突文件：\n${conflictFiles.map(r => `  • ${getFilename(r.filepath)}`).join('\n')}\n\n为避免覆盖磁盘上的新内容，系统已停止应用这些修改。请取消旧修改并重新生成预览后再确认。`);
+          } else {
+            statusProject.textContent = `⚠️ ${data.confirmed_count} 个已应用，${failedFiles.length} 个失败`;
+            appendMessage('assistant', `⚠️ 部分修改未应用（${data.confirmed_count} 个成功，${failedFiles.length} 个失败）。\n\n失败文件：\n${failedFiles.map(r => `  • ${getFilename(r.filepath)}`).join('\n')}\n\n失败原因：${failedFiles[0].error || '未知'}\n\n失败的修改仍保留在待确认列表，处理后（如重新打开项目）发送任意消息即可重新预览并确认。`);
+          }
         } else {
           // 提示成功
           statusProject.textContent = `✅ 已确认 ${data.confirmed_count} 个修改`;
@@ -2117,6 +2517,7 @@
 
         // 关闭模态框
         closeDiffPreview();
+        await loadPendingModifications({ showPreview: false });
 
         // 提示用户重新输入需求
         statusProject.textContent = `↩️ 已撤销 ${data.cancelled_count} 个修改`;
@@ -2169,6 +2570,8 @@
               const fileData = await resp.json();
               const position = editor.getPosition();
               tab.model.setValue(fileData.content);
+              tab.savedContent = fileData.content;
+              tab.savedContentSha256 = fileData.content_sha256;
               if (tab === activeTab && position) {
                 editor.setPosition(position);
               }
@@ -2206,6 +2609,42 @@
 
     function closeSessionsPanel() {
       sessionsOverlay.classList.remove('active');
+    }
+
+    // 页面刷新后恢复 localStorage 所指向的当前会话消息。
+    async function restoreCurrentSessionHistory() {
+      const sessionId = currentSessionId;
+      questionInput.disabled = true;
+      submitBtn.disabled = true;
+      try {
+        const resp = await fetch(
+          `/api/sessions/${encodeURIComponent(sessionId)}/messages`
+        );
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        if (sessionId !== currentSessionId) return;
+
+        const messages = Array.isArray(data.messages) ? data.messages : [];
+        if (messages.length === 0) return;
+
+        chatArea.innerHTML = '';
+        for (const message of messages) {
+          appendMessage(
+            message.role === 'user' ? 'user' : 'assistant',
+            message.content
+          );
+        }
+      } catch (e) {
+        if (sessionId === currentSessionId) {
+          appendMessage('assistant', `⚠️ 当前会话记录加载失败：${e.message}`);
+        }
+      } finally {
+        if (sessionId === currentSessionId) {
+          questionInput.disabled = false;
+          submitBtn.disabled = false;
+          questionInput.focus();
+        }
+      }
     }
 
     async function loadSessionsList() {
@@ -2301,6 +2740,9 @@
     }
 
     async function switchToSession(sessionId) {
+      const projectPaths = [...currentWorkspacePaths];
+      questionInput.disabled = true;
+      submitBtn.disabled = true;
       try {
         const resp = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/messages`);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -2321,12 +2763,23 @@
             appendMessage(m.role === 'user' ? 'user' : 'assistant', m.content);
           }
         }
+
+        const failed = await rebindProjectsToSession(projectPaths, sessionId);
+        await refreshUndoButton();
+        if (failed.length > 0) {
+          statusProject.textContent = `⚠️ ${failed.length} 个项目重新绑定失败`;
+          appendMessage('assistant', `⚠️ 已切换历史会话，但以下项目重新绑定失败：\n${failed.map(item => `  • ${item.projectPath}: ${item.error}`).join('\n')}\n\n请重新打开这些项目后再继续。`);
+        }
         closeSessionsPanel();
         // 切回会话时检查待确认修改（任务在用户离开期间完成时，其 diff 会在此弹出）
         await checkPendingModifications();
         questionInput.focus();
       } catch (e) {
         alert('加载会话失败: ' + e.message);
+      } finally {
+        questionInput.disabled = false;
+        submitBtn.disabled = false;
+        questionInput.focus();
       }
     }
 
@@ -2342,6 +2795,13 @@
     });
 
     // ---- 页面加载时检查健康状态 ----
+    async function initializeCurrentSession() {
+      await restoreCurrentSessionHistory();
+      await restoreWorkspacePaths();
+      await loadPendingModifications({ showPreview: true });
+    }
+    initializeCurrentSession();
+
     fetch('/api/health')
       .then(r => r.json())
       .then(data => {

@@ -122,6 +122,8 @@ class TaskControl:
     def mark_done(self, answer: str, sources: list):
         """标记任务完成。"""
         with self._lock:
+            if self._state in (TaskState.DONE, TaskState.CANCELLED, TaskState.ERROR):
+                return
             self.answer = answer
             self.sources = sources
             self._state = TaskState.DONE
@@ -129,6 +131,8 @@ class TaskControl:
     def mark_error(self, error: str):
         """标记任务出错。"""
         with self._lock:
+            if self._state in (TaskState.DONE, TaskState.CANCELLED, TaskState.ERROR):
+                return
             self.error = error
             self._state = TaskState.ERROR
 
@@ -224,6 +228,28 @@ def get_task(task_id: str) -> Optional[TaskControl]:
         return _TASKS.get(task_id)
 
 
+def cancel_tasks_for_session(session_id: str) -> int:
+    """取消指定会话中仍在运行或暂停的全部任务。"""
+    with _TASKS_LOCK:
+        tasks = [tc for tc in _TASKS.values() if tc.session_id == session_id]
+
+    cancelled_count = 0
+    for tc in tasks:
+        if tc.state in (TaskState.RUNNING, TaskState.PAUSED):
+            tc.cancel()
+            cancelled_count += 1
+    return cancelled_count
+
+
+def get_task_ids_for_session(session_id: str) -> list[str]:
+    """返回指定会话当前仍在任务注册表中的任务 ID。"""
+    with _TASKS_LOCK:
+        return [
+            tc.task_id for tc in _TASKS.values()
+            if tc.session_id == session_id
+        ]
+
+
 def remove_task(task_id: str):
     """从注册表移除任务（由 _schedule_removal 延迟调用，防内存泄漏）。"""
     with _TASKS_LOCK:
@@ -264,7 +290,6 @@ def run_task(tc: TaskControl, orch, question: str, session_id: str):
         tc.mark_done(answer, sources)
         print(f"✅ [TaskManager] 任务 {tc.task_id} 完成")
     except TaskCancelled:
-        tc.mark_error("任务已取消")
         print(f"🛑 [TaskManager] 任务 {tc.task_id} 已取消")
     except Exception as e:
         tc.mark_error(str(e))

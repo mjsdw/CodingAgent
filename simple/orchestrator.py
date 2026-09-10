@@ -134,6 +134,10 @@ class Orchestrator:
         # ---- 3. Skill 执行 ----
         answer, sources = skill.execute(effective_question, ctx)
 
+        # Skill 执行期间会话可能被删除或任务被取消；禁止将迟到结果重新写回历史。
+        if task_control is not None:
+            task_control.check_point("before_memory_save")
+
         # ---- 4. 保存本轮对话到记忆 ----
         if ENABLE_MEMORY and session_id:
             store = get_memory_store()

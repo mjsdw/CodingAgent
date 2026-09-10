@@ -20,6 +20,7 @@
 #   - snapshot：修改前自动快照
 #   - diff_preview：修改前 diff 预览（在 diff_preview.py 中实现）
 
+import hashlib
 import re
 from pathlib import Path
 
@@ -30,10 +31,13 @@ from config import (
     WORKSPACE_HIDDEN_DIRS,
 )
 
+from tools.code_tool.atomic_write import atomic_write_text
 from tools.code_tool.path_security import (
     _validate_path, _validate_write_path, _get_effective_allowed,
 )
-from tools.code_tool.snapshot import _create_snapshot
+from tools.code_tool.snapshot import (
+    _create_snapshot, _create_creation_snapshot, _discard_snapshot,
+)
 
 
 # ------------------------------------------------------------------
@@ -101,9 +105,13 @@ def edit_file_impl(filepath: str, old_string: str, new_string: str, session_id: 
     # 创建快照
     snapshot_id = _create_snapshot(filepath, f"edit: 替换片段", session_id=session_id)
 
-    # 执行替换
+    # 执行替换；写入失败时撤销刚创建的快照记录。
     new_content = content.replace(old_string, new_string)
-    p.write_text(new_content, encoding="utf-8")
+    try:
+        atomic_write_text(p, new_content)
+    except Exception:
+        _discard_snapshot(filepath, snapshot_id, session_id=session_id)
+        raise
 
     return f"已修改 {p.name}，快照ID={snapshot_id}，可撤销。"
 
@@ -118,16 +126,20 @@ def write_file_impl(filepath: str, content: str, session_id: str = None) -> str:
     """
     p = _validate_write_path(filepath, session_id)
 
-    # 如果文件已存在，创建快照
     snapshot_id = 0
-    if p.exists():
-        snapshot_id = _create_snapshot(filepath, f"write: 全量覆写", session_id=session_id)
-
-    # 确保父目录存在
-    p.parent.mkdir(parents=True, exist_ok=True)
-
-    # 写入新内容
-    p.write_text(content, encoding="utf-8")
+    try:
+        if p.exists():
+            snapshot_id = _create_snapshot(filepath, f"write: 全量覆写", session_id=session_id)
+        else:
+            snapshot_id = _create_creation_snapshot(
+                filepath, content, "write: 新建文件", session_id=session_id
+            )
+        p.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(p, content)
+    except Exception:
+        if snapshot_id:
+            _discard_snapshot(filepath, snapshot_id, session_id=session_id)
+        raise
 
     return f"已写入 {p.name}，快照ID={snapshot_id}，可撤销。"
 
@@ -428,7 +440,12 @@ def read_workspace_file_impl(filepath: str, session_id: str = None) -> str:
         return f"错误：读取失败: {e}"
 
 
-def save_workspace_file_impl(filepath: str, content: str, session_id: str = None) -> dict:
+def save_workspace_file_impl(
+    filepath: str,
+    content: str,
+    session_id: str = None,
+    base_content_sha256: str = "",
+) -> dict:
     """保存工作区文件内容（前端 Ctrl+S 调用，自动创建快照）。
 
     :param filepath: 文件路径
@@ -441,23 +458,35 @@ def save_workspace_file_impl(filepath: str, content: str, session_id: str = None
     except ValueError as e:
         return {"error": str(e)}
 
-    # 已存在文件创建快照
     snapshot_id = 0
-    if p.exists():
-        snapshot_id = _create_snapshot(filepath, f"workspace save: 前端保存", session_id=session_id)
-
-    # 确保父目录存在
-    p.parent.mkdir(parents=True, exist_ok=True)
-
     try:
-        p.write_text(content, encoding="utf-8")
+        if p.exists():
+            current_content = p.read_text(encoding="utf-8")
+            current_hash = hashlib.sha256(current_content.encode("utf-8")).hexdigest()
+            if current_hash != base_content_sha256:
+                return {
+                    "status": "conflict",
+                    "filepath": str(p),
+                    "content_sha256": current_hash,
+                    "error": "磁盘文件已被外部修改，请重新打开文件或手动合并后再保存",
+                }
+            snapshot_id = _create_snapshot(filepath, f"workspace save: 前端保存", session_id=session_id)
+        else:
+            snapshot_id = _create_creation_snapshot(
+                filepath, content, "workspace save: 新建文件", session_id=session_id
+            )
+        p.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(p, content)
     except Exception as e:
+        if snapshot_id:
+            _discard_snapshot(filepath, snapshot_id, session_id=session_id)
         return {"error": f"保存失败: {e}"}
 
     return {
         "status": "saved",
         "snapshot_id": snapshot_id,
         "filepath": str(p),
+        "content_sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
     }
 
 
