@@ -1326,6 +1326,26 @@
     // 旧任务的结果不再写入当前聊天区（其答案已存旧会话历史，切回可见）
     let chatEpoch = 0;
     let currentWorkspacePaths = [];
+    const WORKSPACE_STORAGE_KEY = 'rag_workspace_paths';
+
+    function loadWorkspacePaths() {
+      try {
+        const stored = JSON.parse(localStorage.getItem(WORKSPACE_STORAGE_KEY) || '[]');
+        if (!Array.isArray(stored)) return [];
+        return [...new Set(stored.filter(path => typeof path === 'string' && path.trim()))];
+      } catch (e) {
+        localStorage.removeItem(WORKSPACE_STORAGE_KEY);
+        return [];
+      }
+    }
+
+    function saveWorkspacePaths(projectPaths) {
+      const normalized = [...new Set(
+        projectPaths.filter(path => typeof path === 'string' && path.trim())
+      )];
+      localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(normalized));
+    }
+
     function getSessionId() {
       let sid = localStorage.getItem('rag_session_id');
       if (!sid) {
@@ -1352,6 +1372,25 @@
         }
       }
       return failed;
+    }
+
+    async function restoreWorkspacePaths() {
+      const storedPaths = loadWorkspacePaths();
+      if (storedPaths.length === 0) return;
+
+      const failed = await rebindProjectsToSession(storedPaths, currentSessionId);
+      const failedPaths = new Set(failed.map(item => item.projectPath));
+      const restoredPaths = storedPaths.filter(path => !failedPaths.has(path));
+      currentWorkspacePaths = restoredPaths;
+
+      if (restoredPaths.length > 0) {
+        // openProject 会刷新根文件树，并根据后端实际结果校正 currentWorkspacePaths。
+        await openProject(restoredPaths[0]);
+      }
+      if (failed.length > 0) {
+        statusProject.textContent = `⚠️ ${failed.length} 个项目恢复失败`;
+        appendMessage('assistant', `⚠️ 以下项目在服务重启后恢复失败：\n${failed.map(item => `  • ${item.projectPath}: ${item.error}`).join('\n')}\n\n路径仍保存在当前浏览器中，下次刷新会再次尝试。`);
+      }
     }
 
     async function newSession(msg) {
@@ -1558,6 +1597,7 @@
 
         // 更新状态
         currentWorkspacePaths = data.current_projects || [data.project_path];
+        saveWorkspacePaths(currentWorkspacePaths);
         statusProject.textContent = `● 工作区: ${data.project_name}`;
         projectNameDisplay.textContent = data.project_name;
         modeLabel.textContent = `项目: ${data.project_name}`;
@@ -2649,6 +2689,7 @@
     // ---- 页面加载时检查健康状态 ----
     async function initializeCurrentSession() {
       await restoreCurrentSessionHistory();
+      await restoreWorkspacePaths();
       await loadPendingModifications({ showPreview: true });
     }
     initializeCurrentSession();
