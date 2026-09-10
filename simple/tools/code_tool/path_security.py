@@ -11,8 +11,9 @@
 #   2. 静态白名单：config.ALLOWED_WORKSPACES（默认空）
 #   3. 会话动态白名单：用户主动"打开项目"后加入
 
-import re
 from pathlib import Path
+
+from core.session_id import validate_session_id
 
 from config import (
     CODE_HISTORY_DIR, BLOCKED_DIRS, ALLOWED_WORKSPACES,
@@ -69,8 +70,7 @@ def add_session_workspace(session_id: str, project_path: str) -> Path:
     :return: 规范化后的 Path 对象
     :raises ValueError: 路径不存在、不是目录、超限、命中黑名单或前缀不允许
     """
-    if not session_id:
-        raise ValueError("session_id 不能为空")
+    validate_session_id(session_id)
 
     p = Path(project_path).resolve()
 
@@ -125,8 +125,7 @@ def add_session_open_file(session_id: str, file_path: str) -> Path:
     :return: 规范化后的 Path 对象
     :raises ValueError: 路径不存在、不是文件、命中隐藏目录/黑名单、前缀不允许或超限
     """
-    if not session_id:
-        raise ValueError("session_id 不能为空")
+    validate_session_id(session_id)
 
     p = Path(file_path).resolve()
 
@@ -191,6 +190,7 @@ def remove_session_workspace(session_id: str, project_path: str = None) -> int:
     :param project_path: 指定关闭的项目路径；为空时关闭该会话所有项目
     :return: 移除的项目数（含独立打开文件数）
     """
+    validate_session_id(session_id)
     if session_id not in _SESSION_WORKSPACES and session_id not in _SESSION_OPEN_FILES:
         return 0
 
@@ -211,11 +211,13 @@ def remove_session_workspace(session_id: str, project_path: str = None) -> int:
 
 def get_session_workspaces(session_id: str) -> list[Path]:
     """获取指定会话已打开的项目根路径列表。"""
+    validate_session_id(session_id)
     return list(_SESSION_WORKSPACES.get(session_id, []))
 
 
 def get_session_open_files(session_id: str) -> list[Path]:
     """获取指定会话中，前端单独打开的文件列表（用于 Planner 优先提示）。"""
+    validate_session_id(session_id)
     return list(_SESSION_OPEN_FILES.get(session_id, []))
 
 
@@ -230,6 +232,7 @@ def has_session_files(session_id: str) -> bool:
     """
     if not session_id:
         return False
+    validate_session_id(session_id)
     # 1. 检查已打开的项目
     if get_session_workspaces(session_id):
         return True
@@ -237,8 +240,7 @@ def has_session_files(session_id: str) -> bool:
     if get_session_open_files(session_id):
         return True
     # 3. 检查上传的文件
-    safe_sid = re.sub(r"[^a-zA-Z0-9._-]", "_", session_id)
-    session_dir = Path(UPLOAD_DIR).resolve() / safe_sid
+    session_dir = Path(UPLOAD_DIR).resolve() / session_id
     if session_dir.exists():
         try:
             return any(f.is_file() for f in session_dir.iterdir())
@@ -256,6 +258,7 @@ def _get_effective_allowed(session_id: str = None) -> list[Path]:
     allowed = list(_BUILTIN_ALLOWED_PATHS)   # 内置功能目录（始终生效）
     allowed.extend(_ALLOWED_PATHS)          # 静态配置白名单
     if session_id:
+        validate_session_id(session_id)
         allowed.extend(_SESSION_WORKSPACES.get(session_id, []))
         # ★ 新增：把独立打开的文件也加入白名单（_is_within_allowed 用 path == allowed 命中自身）
         allowed.extend(_SESSION_OPEN_FILES.get(session_id, []))

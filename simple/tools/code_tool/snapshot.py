@@ -15,12 +15,12 @@
 
 import hashlib
 import json
-import re
 import time
 from pathlib import Path
 
 from config import CODE_HISTORY_DIR, MAX_SNAPSHOTS_PER_FILE
 
+from core.session_id import validate_session_id
 from tools.code_tool.atomic_write import atomic_write_text
 from tools.code_tool.path_security import _validate_path, _validate_write_path
 
@@ -38,9 +38,7 @@ def _get_history_dir(filepath: str, session_id: str = None) -> Path:
     :param session_id: 会话 ID（None 时 fallback 到 "default"）
     """
     p = Path(filepath).resolve()
-    sid = session_id or "default"
-    # 安全化 session_id：只允许字母数字._-，防止路径穿越
-    safe_sid = re.sub(r"[^a-zA-Z0-9._-]", "_", sid)
+    safe_sid = validate_session_id(session_id or "default")
     # 完整路径 hash：区分同名文件（仅用 p.name 会导致不同目录同名文件快照混存、undo 交叉污染）
     path_hash = hashlib.md5(str(p).encode("utf-8")).hexdigest()[:12]
     history_base = Path(CODE_HISTORY_DIR).resolve()

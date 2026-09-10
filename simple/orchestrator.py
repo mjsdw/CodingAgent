@@ -18,6 +18,7 @@
 from langchain_core.documents import Document
 
 from core.memory import get_memory_store
+from core.session_id import validate_session_id
 from config import ENABLE_MEMORY, ENABLE_CODE_AGENT, UPLOAD_DIR
 from skills.base import SkillContext
 from router.hybrid_router import HybridRouter
@@ -33,9 +34,7 @@ def _load_session_uploads(session_id: str) -> list[dict]:
         return []
     try:
         from pathlib import Path
-        import re
-        # session_id 规范化（与 app.py 保持一致，防止路径穿越）
-        safe_sid = re.sub(r"[^a-zA-Z0-9._-]", "_", session_id)
+        safe_sid = validate_session_id(session_id)
         session_dir = Path(UPLOAD_DIR).resolve() / safe_sid
         if not session_dir.exists() or not session_dir.is_dir():
             return []
@@ -93,6 +92,9 @@ class Orchestrator:
         #          - answer: 最终给用户的答案文本
         #          - sources: 引用片段列表（无检索的 Skill 返回空列表）
         # """
+        if session_id:
+            validate_session_id(session_id)
+
         # ---- 1. 组装 SkillContext（注入历史记忆 + 上传文件清单 + 任务控制）----
         history = []
         if ENABLE_MEMORY and session_id:

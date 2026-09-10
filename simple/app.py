@@ -24,7 +24,7 @@ import shutil
 import time
 from pathlib import Path
 import re
-from fastapi import FastAPI, UploadFile, File, Query
+from fastapi import FastAPI, UploadFile, File, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
@@ -38,6 +38,7 @@ from config import (
 )
 from orchestrator import Orchestrator
 from core.memory import get_memory_store
+from core.session_id import InvalidSessionIdError, validate_session_id
 from tools.code_tool import (
     undo_last, get_history,
     add_session_workspace, add_session_open_file,
@@ -56,6 +57,12 @@ app = FastAPI(
     description="基于 LangGraph ReAct 的知识库问答 Web 服务",
     version="1.0.0",
 )
+
+
+@app.exception_handler(InvalidSessionIdError)
+async def invalid_session_id_handler(request: Request, exc: InvalidSessionIdError):
+    """将所有会话 ID 校验失败统一转换为 HTTP 400。"""
+    return JSONResponse({"error": str(exc)}, status_code=400)
 
 # 挂载静态文件目录（static/ 下的 index.html、css、js 都能直接访问）
 STATIC_DIR = Path(__file__).parent / "static"
@@ -231,8 +238,7 @@ def _get_session_upload_dir(session_id: str) -> Path:
 
     结构：{UPLOAD_DIR}/{session_id}/
     """
-    # session_id 也要规范化，防止路径穿越
-    safe_sid = _FILENAME_SAFE_RE.sub("_", session_id)
+    safe_sid = validate_session_id(session_id)
     upload_root = Path(UPLOAD_DIR).resolve()
     session_dir = upload_root / safe_sid
     session_dir.mkdir(parents=True, exist_ok=True)
@@ -248,7 +254,7 @@ def _get_session_size(session_dir: Path) -> int:
 
 def _delete_session_data_directory(root_dir: str, session_id: str) -> int:
     """安全递归删除某个数据根目录下的单个会话目录。"""
-    safe_sid = _FILENAME_SAFE_RE.sub("_", session_id)
+    safe_sid = validate_session_id(session_id)
     data_root = Path(root_dir).resolve()
     session_dir = (data_root / safe_sid).resolve()
     if not safe_sid or session_dir == data_root or session_dir.parent != data_root:
@@ -307,6 +313,7 @@ async def chat(req: ChatRequest):
     # session_id：前端没传则自动生成
     import uuid
     session_id = req.session_id or f"web-{uuid.uuid4().hex[:8]}"
+    validate_session_id(session_id)
 
     # ---- 路由预判：判断是否需要后台任务（仅 CodeGen 需要）----
     from skills.base import SkillContext
@@ -388,6 +395,7 @@ async def session_messages(session_id: str, limit: int = Query(default=500, ge=1
 
     返回：{session_id, count, messages: [{role, content, timestamp}]}
     """
+    validate_session_id(session_id)
     store = get_memory_store()
     history = store.get_history(session_id, limit=limit)
     return {"session_id": session_id, "count": len(history), "messages": history}
@@ -396,6 +404,7 @@ async def session_messages(session_id: str, limit: int = Query(default=500, ge=1
 @app.delete("/api/sessions/{session_id}")
 async def delete_session(session_id: str):
     """删除会话历史，并清理任务、工作区、待确认修改和上传文件。"""
+    validate_session_id(session_id)
     from core.task_manager import cancel_tasks_for_session, get_task_ids_for_session
     from skills.code_gen import delete_code_checkpoints
 
@@ -556,6 +565,7 @@ async def code_undo(req: CodeUndoRequest):
         - status="disabled"    → 代码模块未启用（ENABLE_CODE_AGENT=False）
         - status="error"       → 路径非法或撤销异常
     """
+    validate_session_id(req.session_id)
     filepath = req.filepath.strip()
     if not filepath:
         return JSONResponse(
@@ -605,6 +615,7 @@ async def code_history(
 
     返回：按 snapshot_id 升序排列的历史记录列表。
     """
+    validate_session_id(session_id)
     filepath = filepath.strip()
     if not filepath:
         return JSONResponse(
@@ -664,6 +675,7 @@ async def upload_file(
         - 单会话总大小不超过 UPLOAD_MAX_SESSION_SIZE（默认 10MB）
         - 文件名规范化：只保留 [a-zA-Z0-9._-]，其他字符替换为 _
     """
+    validate_session_id(session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
             {"error": "代码模块未启用（ENABLE_CODE_AGENT=False）"},
@@ -730,6 +742,7 @@ async def list_uploads(session_id: str):
 
     返回：按文件名排序的上传文件列表。
     """
+    validate_session_id(session_id)
     if not ENABLE_CODE_AGENT:
         return []
 
@@ -772,6 +785,7 @@ async def delete_upload(session_id: str, filename: str):
         - status="not_found"  → 文件不存在
         - status="error"      → 删除异常
     """
+    validate_session_id(session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
             {"error": "代码模块未启用（ENABLE_CODE_AGENT=False）"},
@@ -815,6 +829,7 @@ async def code_pending(session_id: str = Query(..., description="会话 ID")):
 
     返回：{session_id, pending: [{filepath, action, diff, is_new?}, ...], count}
     """
+    validate_session_id(session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
             {"error": "代码模块未启用（ENABLE_CODE_AGENT=False）"},
@@ -838,6 +853,7 @@ async def code_confirm(session_id: str = Query(..., description="会话 ID")):
 
     返回：{status, confirmed_count, results: [{filepath, snapshot_id, status}]}
     """
+    validate_session_id(session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
             {"error": "代码模块未启用（ENABLE_CODE_AGENT=False）"},
@@ -857,6 +873,7 @@ async def code_cancel(session_id: str = Query(..., description="会话 ID")):
 
     返回：{status, cancelled_count}
     """
+    validate_session_id(session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
             {"error": "代码模块未启用（ENABLE_CODE_AGENT=False）"},
@@ -885,6 +902,7 @@ async def workspace_open(req: WorkspaceOpenRequest):
         - status="already_open"  → 该项目已打开（幂等）
         - status="error"         → 打开失败（路径不存在/超限/黑名单等）
     """
+    validate_session_id(req.session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
             {"error": "代码模块未启用（ENABLE_CODE_AGENT=False）"},
@@ -935,6 +953,7 @@ async def workspace_open_file(req: WorkspaceOpenFileRequest):
         - status="opened"        → 新注册成功
         - status="already_open"  → 该文件已注册过（幂等）
     """
+    validate_session_id(req.session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
             {"error": "代码模块未启用（ENABLE_CODE_AGENT=False）"},
@@ -975,6 +994,7 @@ async def workspace_tree(
 
     返回：{name, path, type, children: [...]}
     """
+    validate_session_id(session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
             {"error": "代码模块未启用（ENABLE_CODE_AGENT=False）"},
@@ -1002,6 +1022,7 @@ async def workspace_file(
 
     返回：{filepath, content, size}
     """
+    validate_session_id(session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
             {"error": "代码模块未启用（ENABLE_CODE_AGENT=False）"},
@@ -1030,6 +1051,7 @@ async def workspace_save(req: WorkspaceSaveRequest):
 
     返回：{status, snapshot_id, filepath}
     """
+    validate_session_id(req.session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
             {"error": "代码模块未启用（ENABLE_CODE_AGENT=False）"},
@@ -1078,6 +1100,7 @@ async def workspace_status(session_id: str = Query(..., description="会话 ID")
         count_open_files:int,                   # 独立文件数量
       }
     """
+    validate_session_id(session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
             {"error": "代码模块未启用（ENABLE_CODE_AGENT=False）"},
@@ -1108,6 +1131,7 @@ async def workspace_close(
 
     返回：{session_id, removed_count, status}
     """
+    validate_session_id(session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
             {"error": "代码模块未启用（ENABLE_CODE_AGENT=False）"},

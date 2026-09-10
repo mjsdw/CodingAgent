@@ -194,10 +194,10 @@ def _build_available_paths_text(session_id: str) -> str:
 
     # ---------- 3. 已上传的文件 ----------
     from config import UPLOAD_DIR
-    import re as _re
+    from core.session_id import validate_session_id
     from pathlib import Path as _Path
 
-    safe_sid = _re.sub(r"[^a-zA-Z0-9._-]", "_", session_id)
+    safe_sid = validate_session_id(session_id)
     session_dir = _Path(UPLOAD_DIR).resolve() / safe_sid
     uploads: list[_Path] = []
     if session_dir.exists():
