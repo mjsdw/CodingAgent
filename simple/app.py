@@ -20,6 +20,7 @@
 #   5. 撤销/历史接口直接复用 tools.code_tool 的 undo_last / get_history
 
 import hashlib
+import shutil
 import time
 from pathlib import Path
 import re
@@ -32,6 +33,7 @@ from pydantic import BaseModel
 from config import (
     WEB_HOST, WEB_PORT, ENABLE_CODE_AGENT,
     UPLOAD_DIR, UPLOAD_MAX_FILE_SIZE, UPLOAD_MAX_SESSION_SIZE, UPLOAD_ALLOWED_EXTS,
+    CODE_HISTORY_DIR, IMAGE_UPLOAD_DIR,
     WORKSPACE_TREE_DEFAULT_DEPTH, WORKSPACE_TREE_MAX_DEPTH,
 )
 from orchestrator import Orchestrator
@@ -244,25 +246,27 @@ def _get_session_size(session_dir: Path) -> int:
     return sum(f.stat().st_size for f in session_dir.iterdir() if f.is_file())
 
 
-def _delete_session_uploads(session_id: str) -> int:
-    """删除指定会话通过上传接口创建的文件，并返回删除数量。"""
+def _delete_session_data_directory(root_dir: str, session_id: str) -> int:
+    """安全递归删除某个数据根目录下的单个会话目录。"""
     safe_sid = _FILENAME_SAFE_RE.sub("_", session_id)
-    upload_root = Path(UPLOAD_DIR).resolve()
-    session_dir = upload_root / safe_sid
+    data_root = Path(root_dir).resolve()
+    session_dir = (data_root / safe_sid).resolve()
+    if not safe_sid or session_dir == data_root or session_dir.parent != data_root:
+        raise ValueError(f"非法会话数据目录: {session_id}")
     if not session_dir.exists() or not session_dir.is_dir():
         return 0
 
-    deleted_count = 0
-    for item in session_dir.iterdir():
-        if item.is_file() or item.is_symlink():
-            item.unlink()
-            deleted_count += 1
-    try:
-        session_dir.rmdir()
-    except OSError:
-        # 上传接口只创建平铺文件；若目录中存在外部创建的子目录则保留目录。
-        pass
+    deleted_count = sum(
+        1 for item in session_dir.rglob("*")
+        if item.is_file() or item.is_symlink()
+    )
+    shutil.rmtree(session_dir)
     return deleted_count
+
+
+def _delete_session_uploads(session_id: str) -> int:
+    """删除指定会话的全部上传数据。"""
+    return _delete_session_data_directory(UPLOAD_DIR, session_id)
 
 
 # ===================== 路由 =====================
@@ -404,6 +408,8 @@ async def delete_session(session_id: str):
         "workspaces_removed": 0,
         "pending_cancelled": 0,
         "uploads_deleted": 0,
+        "snapshots_deleted": 0,
+        "images_deleted": 0,
     }
     cleanup_errors = []
 
@@ -424,6 +430,16 @@ async def delete_session(session_id: str):
         )),
         ("uploads", lambda: cleanup.update(
             uploads_deleted=_delete_session_uploads(session_id)
+        )),
+        ("snapshots", lambda: cleanup.update(
+            snapshots_deleted=_delete_session_data_directory(
+                CODE_HISTORY_DIR, session_id
+            )
+        )),
+        ("images", lambda: cleanup.update(
+            images_deleted=_delete_session_data_directory(
+                IMAGE_UPLOAD_DIR, session_id
+            )
         )),
         ("history", lambda: get_memory_store().clear(session_id)),
     )
