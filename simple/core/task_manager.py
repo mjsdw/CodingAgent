@@ -63,6 +63,7 @@ class TaskControl:
     task_id: str
     session_id: str = ""
     question: str = ""
+    session_generation: int = 0
 
     # 控制信号（线程安全）
     _paused: threading.Event = field(default_factory=threading.Event)
@@ -207,7 +208,8 @@ _TASKS: dict[str, TaskControl] = {}
 _TASKS_LOCK = threading.Lock()
 
 
-def create_task(session_id: str = "", question: str = "") -> TaskControl:
+def create_task(session_id: str = "", question: str = "",
+                session_generation: int = 0) -> TaskControl:
     """创建新任务，返回 TaskControl。
 
     :param session_id: 会话 ID
@@ -215,7 +217,12 @@ def create_task(session_id: str = "", question: str = "") -> TaskControl:
     :return: TaskControl 实例
     """
     task_id = f"task-{uuid.uuid4().hex[:12]}"
-    tc = TaskControl(task_id=task_id, session_id=session_id, question=question)
+    tc = TaskControl(
+        task_id=task_id,
+        session_id=session_id,
+        question=question,
+        session_generation=session_generation,
+    )
     with _TASKS_LOCK:
         _TASKS[task_id] = tc
     print(f"📋 [TaskManager] 创建任务 {task_id}（会话: {session_id}）")
@@ -281,7 +288,12 @@ def run_task(tc: TaskControl, orch, question: str, session_id: str):
     :param session_id: 会话 ID
     """
     try:
-        answer, sources = orch.query(question, session_id=session_id, task_control=tc)
+        answer, sources = orch.query(
+            question,
+            session_id=session_id,
+            task_control=tc,
+            session_generation=tc.session_generation,
+        )
         # 查询返回后检查点：
         #   - CodeGenSkill 内部已用 interrupt_before 控制，返回时状态机已走完
         #   - 非 LangGraph Skill 的 LLM 调用期间用户点暂停，这里阻塞等待恢复

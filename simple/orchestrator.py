@@ -19,6 +19,7 @@ from langchain_core.documents import Document
 
 from core.memory import get_memory_store
 from core.session_id import validate_session_id
+from core.session_lifecycle import begin_request, require_current
 from config import ENABLE_MEMORY, ENABLE_CODE_AGENT, UPLOAD_DIR
 from skills.base import SkillContext
 from router.hybrid_router import HybridRouter
@@ -82,7 +83,8 @@ class Orchestrator:
         self.router = HybridRouter()
 
     def query(self, question: str, session_id: str = None, task_control=None,
-              pre_classified_skill=None) -> tuple[str, list[Document]]:
+              pre_classified_skill=None,
+              session_generation: int = None) -> tuple[str, list[Document]]:
         # """处理用户问题，返回 (答案, 引用片段)。
         #
         # :param question: 用户原始问题
@@ -94,10 +96,13 @@ class Orchestrator:
         # """
         if session_id:
             validate_session_id(session_id)
+            if session_generation is None:
+                session_generation = begin_request(session_id)
 
         # ---- 1. 组装 SkillContext（注入历史记忆 + 上传文件清单 + 任务控制）----
         history = []
         if ENABLE_MEMORY and session_id:
+            require_current(session_id, session_generation)
             store = get_memory_store()
             history = store.get_history(session_id)
             if history:
@@ -142,6 +147,7 @@ class Orchestrator:
 
         # ---- 4. 保存本轮对话到记忆 ----
         if ENABLE_MEMORY and session_id:
+            require_current(session_id, session_generation)
             store = get_memory_store()
             # 保存原始用户问题（不含上传文件清单前缀），避免历史污染
             store.add_turn(session_id, question, answer)

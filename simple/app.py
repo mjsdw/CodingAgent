@@ -39,6 +39,9 @@ from config import (
 from orchestrator import Orchestrator
 from core.memory import get_memory_store
 from core.session_id import InvalidSessionIdError, validate_session_id
+from core.session_lifecycle import (
+    SessionDeletingError, begin_delete, begin_request, end_delete,
+)
 from tools.code_tool import (
     undo_last, get_history,
     add_session_workspace, add_session_open_file,
@@ -63,6 +66,12 @@ app = FastAPI(
 async def invalid_session_id_handler(request: Request, exc: InvalidSessionIdError):
     """将所有会话 ID 校验失败统一转换为 HTTP 400。"""
     return JSONResponse({"error": str(exc)}, status_code=400)
+
+
+@app.exception_handler(SessionDeletingError)
+async def session_deleting_handler(request: Request, exc: SessionDeletingError):
+    """删除中或已失效的会话请求统一返回 HTTP 409。"""
+    return JSONResponse({"error": str(exc)}, status_code=409)
 
 # 挂载静态文件目录（static/ 下的 index.html、css、js 都能直接访问）
 STATIC_DIR = Path(__file__).parent / "static"
@@ -314,6 +323,7 @@ async def chat(req: ChatRequest):
     import uuid
     session_id = req.session_id or f"web-{uuid.uuid4().hex[:8]}"
     validate_session_id(session_id)
+    session_generation = begin_request(session_id)
 
     # ---- 路由预判：判断是否需要后台任务（仅 CodeGen 需要）----
     from skills.base import SkillContext
@@ -335,6 +345,7 @@ async def chat(req: ChatRequest):
         answer, sources = await run_in_threadpool(
             _orch.query, question,
             session_id=session_id, pre_classified_skill=skill,
+            session_generation=session_generation,
         )
         sources_data = []
         for src in sources:
@@ -358,7 +369,11 @@ async def chat(req: ChatRequest):
     from core.task_manager import create_task, run_task
     import threading
 
-    tc = create_task(session_id=session_id, question=question)
+    tc = create_task(
+        session_id=session_id,
+        question=question,
+        session_generation=session_generation,
+    )
     t = threading.Thread(
         target=run_task,
         args=(tc, _orch, question, session_id),
@@ -408,6 +423,7 @@ async def delete_session(session_id: str):
     from core.task_manager import cancel_tasks_for_session, get_task_ids_for_session
     from skills.code_gen import delete_code_checkpoints
 
+    begin_delete(session_id)
     task_ids = get_task_ids_for_session(session_id)
     checkpoint_thread_ids = task_ids + [f"codegen-{session_id}"]
 
@@ -458,6 +474,8 @@ async def delete_session(session_id: str):
             cleanup_step()
         except Exception as e:
             cleanup_errors.append({"resource": resource, "error": str(e)})
+
+    end_delete(session_id)
 
     return {
         "session_id": session_id,
