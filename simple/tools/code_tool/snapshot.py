@@ -138,6 +138,25 @@ def _cleanup_old_snapshots(history_dir: Path) -> int:
     return deleted
 
 
+def _discard_snapshot(
+    filepath: str,
+    snapshot_id: int,
+    session_id: str = None,
+) -> bool:
+    """删除一次尚未提交成功的快照及其元数据。"""
+    if snapshot_id <= 0:
+        return False
+    history_dir = _get_history_dir(filepath, session_id)
+    snapshot_path = history_dir / f"{snapshot_id:03d}.snapshot"
+    meta_path = history_dir / f"{snapshot_id:03d}.meta.json"
+    removed = False
+    for path in (snapshot_path, meta_path):
+        if path.exists():
+            path.unlink()
+            removed = True
+    return removed
+
+
 def undo_last(filepath: str, session_id: str = None) -> dict:
     """撤销最近一次修改，恢复到上一个快照。
 

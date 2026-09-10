@@ -15,7 +15,9 @@
 import difflib
 
 from tools.code_tool.path_security import _validate_path, _validate_write_path
-from tools.code_tool.snapshot import _create_snapshot, _create_creation_snapshot
+from tools.code_tool.snapshot import (
+    _create_snapshot, _create_creation_snapshot, _discard_snapshot,
+)
 
 
 # 会话级待确认修改缓存：{session_id: [{filepath, action, old_content, new_content, diff}, ...]}
@@ -206,19 +208,24 @@ def confirm_modifications(session_id: str = None) -> dict:
 
             # 已存在文件创建快照
             snapshot_id = 0
-            if p.exists():
-                snapshot_id = _create_snapshot(filepath, f"confirm: {action}", session_id=sid)
-            else:
-                snapshot_id = _create_creation_snapshot(
-                    filepath,
-                    new_content,
-                    f"confirm: {action}",
-                    session_id=sid,
-                )
+            try:
+                if p.exists():
+                    snapshot_id = _create_snapshot(filepath, f"confirm: {action}", session_id=sid)
+                else:
+                    snapshot_id = _create_creation_snapshot(
+                        filepath,
+                        new_content,
+                        f"confirm: {action}",
+                        session_id=sid,
+                    )
 
-            # 确保父目录存在
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(new_content, encoding="utf-8")
+                # 确保父目录存在并写入；任一步失败都回滚本次快照。
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text(new_content, encoding="utf-8")
+            except Exception:
+                if snapshot_id:
+                    _discard_snapshot(filepath, snapshot_id, session_id=sid)
+                raise
 
             results.append({
                 "filepath": filepath,
