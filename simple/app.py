@@ -41,6 +41,7 @@ from core.memory import get_memory_store
 from core.session_id import InvalidSessionIdError, validate_session_id
 from core.session_lifecycle import (
     SessionDeletingError, begin_delete, begin_request, end_delete,
+    require_current, run_if_current,
 )
 from tools.code_tool import (
     undo_last, get_history,
@@ -242,7 +243,7 @@ def _sanitize_filename(name: str) -> str:
     return safe
 
 
-def _get_session_upload_dir(session_id: str) -> Path:
+def _get_session_upload_dir(session_id: str, create: bool = True) -> Path:
     """获取指定会话的上传目录路径，自动创建。
 
     结构：{UPLOAD_DIR}/{session_id}/
@@ -250,7 +251,8 @@ def _get_session_upload_dir(session_id: str) -> Path:
     safe_sid = validate_session_id(session_id)
     upload_root = Path(UPLOAD_DIR).resolve()
     session_dir = upload_root / safe_sid
-    session_dir.mkdir(parents=True, exist_ok=True)
+    if create:
+        session_dir.mkdir(parents=True, exist_ok=True)
     return session_dir
 
 
@@ -411,8 +413,10 @@ async def session_messages(session_id: str, limit: int = Query(default=500, ge=1
     返回：{session_id, count, messages: [{role, content, timestamp}]}
     """
     validate_session_id(session_id)
+    session_generation = begin_request(session_id)
     store = get_memory_store()
     history = store.get_history(session_id, limit=limit)
+    require_current(session_id, session_generation)
     return {"session_id": session_id, "count": len(history), "messages": history}
 
 
@@ -584,6 +588,7 @@ async def code_undo(req: CodeUndoRequest):
         - status="error"       → 路径非法或撤销异常
     """
     validate_session_id(req.session_id)
+    session_generation = begin_request(req.session_id)
     filepath = req.filepath.strip()
     if not filepath:
         return JSONResponse(
@@ -600,7 +605,11 @@ async def code_undo(req: CodeUndoRequest):
         )
 
     try:
-        result = undo_last(filepath, session_id=req.session_id)
+        result = run_if_current(
+            req.session_id,
+            session_generation,
+            lambda: undo_last(filepath, session_id=req.session_id),
+        )
         return CodeUndoResponse(
             filepath=filepath,
             snapshot_id=result.get("snapshot_id", 0),
@@ -608,6 +617,8 @@ async def code_undo(req: CodeUndoRequest):
             status=result.get("status", "error"),
             error=result.get("error", ""),
         )
+    except SessionDeletingError:
+        raise
     except ValueError as e:
         # 路径安全校验失败
         return JSONResponse(
@@ -634,6 +645,7 @@ async def code_history(
     返回：按 snapshot_id 升序排列的历史记录列表。
     """
     validate_session_id(session_id)
+    session_generation = begin_request(session_id)
     filepath = filepath.strip()
     if not filepath:
         return JSONResponse(
@@ -646,6 +658,7 @@ async def code_history(
 
     try:
         history = get_history(filepath, session_id=session_id)
+        require_current(session_id, session_generation)
         return [
             CodeHistoryItem(
                 snapshot_id=item.get("snapshot_id", 0),
@@ -656,6 +669,8 @@ async def code_history(
             )
             for item in history
         ]
+    except SessionDeletingError:
+        raise
     except ValueError as e:
         return JSONResponse(
             {"error": f"路径非法: {e}"},
@@ -694,6 +709,7 @@ async def upload_file(
         - 文件名规范化：只保留 [a-zA-Z0-9._-]，其他字符替换为 _
     """
     validate_session_id(session_id)
+    session_generation = begin_request(session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
             {"error": "代码模块未启用（ENABLE_CODE_AGENT=False）"},
@@ -722,6 +738,7 @@ async def upload_file(
         )
 
     # 4. 会话目录 + 总大小校验
+    require_current(session_id, session_generation)
     session_dir = _get_session_upload_dir(session_id)
     current_size = _get_session_size(session_dir)
     # 如果是覆盖同名文件，减去旧文件大小
@@ -736,7 +753,13 @@ async def upload_file(
 
     # 5. 写入文件
     try:
-        target_path.write_bytes(content)
+        run_if_current(
+            session_id,
+            session_generation,
+            lambda: target_path.write_bytes(content),
+        )
+    except SessionDeletingError:
+        raise
     except Exception as e:
         return JSONResponse(
             {"error": f"文件保存失败: {e}"},
@@ -761,11 +784,13 @@ async def list_uploads(session_id: str):
     返回：按文件名排序的上传文件列表。
     """
     validate_session_id(session_id)
+    session_generation = begin_request(session_id)
     if not ENABLE_CODE_AGENT:
         return []
 
-    session_dir = _get_session_upload_dir(session_id)
+    session_dir = _get_session_upload_dir(session_id, create=False)
     if not session_dir.exists():
+        require_current(session_id, session_generation)
         return []
 
     items = []
@@ -780,6 +805,8 @@ async def list_uploads(session_id: str):
                 size=stat.st_size,
                 upload_time=stat.st_mtime,
             ))
+    except SessionDeletingError:
+        raise
     except Exception as e:
         return JSONResponse(
             {"error": f"列出文件失败: {e}"},
@@ -788,6 +815,7 @@ async def list_uploads(session_id: str):
 
     # 按文件名排序
     items.sort(key=lambda x: x.filename)
+    require_current(session_id, session_generation)
     return items
 
 
@@ -804,6 +832,7 @@ async def delete_upload(session_id: str, filename: str):
         - status="error"      → 删除异常
     """
     validate_session_id(session_id)
+    session_generation = begin_request(session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
             {"error": "代码模块未启用（ENABLE_CODE_AGENT=False）"},
@@ -811,7 +840,7 @@ async def delete_upload(session_id: str, filename: str):
         )
 
     safe_name = _sanitize_filename(filename)
-    session_dir = _get_session_upload_dir(session_id)
+    session_dir = _get_session_upload_dir(session_id, create=False)
     target_path = session_dir / safe_name
 
     if not target_path.exists() or not target_path.is_file():
@@ -822,12 +851,14 @@ async def delete_upload(session_id: str, filename: str):
         )
 
     try:
-        target_path.unlink()
+        run_if_current(session_id, session_generation, target_path.unlink)
         return UploadDeleteResponse(
             filename=safe_name,
             session_id=session_id,
             status="deleted",
         )
+    except SessionDeletingError:
+        raise
     except Exception as e:
         return UploadDeleteResponse(
             filename=safe_name,
@@ -848,6 +879,7 @@ async def code_pending(session_id: str = Query(..., description="会话 ID")):
     返回：{session_id, pending: [{filepath, action, diff, is_new?}, ...], count}
     """
     validate_session_id(session_id)
+    session_generation = begin_request(session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
             {"error": "代码模块未启用（ENABLE_CODE_AGENT=False）"},
@@ -855,6 +887,7 @@ async def code_pending(session_id: str = Query(..., description="会话 ID")):
         )
 
     pending = get_pending_modifications(session_id=session_id)
+    require_current(session_id, session_generation)
     return {
         "session_id": session_id,
         "pending": pending,
@@ -872,13 +905,18 @@ async def code_confirm(session_id: str = Query(..., description="会话 ID")):
     返回：{status, confirmed_count, results: [{filepath, snapshot_id, status}]}
     """
     validate_session_id(session_id)
+    session_generation = begin_request(session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
             {"error": "代码模块未启用（ENABLE_CODE_AGENT=False）"},
             status_code=403,
         )
 
-    result = confirm_modifications(session_id=session_id)
+    result = run_if_current(
+        session_id,
+        session_generation,
+        lambda: confirm_modifications(session_id=session_id),
+    )
     return result
 
 
@@ -892,13 +930,18 @@ async def code_cancel(session_id: str = Query(..., description="会话 ID")):
     返回：{status, cancelled_count}
     """
     validate_session_id(session_id)
+    session_generation = begin_request(session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
             {"error": "代码模块未启用（ENABLE_CODE_AGENT=False）"},
             status_code=403,
         )
 
-    result = cancel_modifications(session_id=session_id)
+    result = run_if_current(
+        session_id,
+        session_generation,
+        lambda: cancel_modifications(session_id=session_id),
+    )
     return result
 
 
@@ -921,6 +964,7 @@ async def workspace_open(req: WorkspaceOpenRequest):
         - status="error"         → 打开失败（路径不存在/超限/黑名单等）
     """
     validate_session_id(req.session_id)
+    session_generation = begin_request(req.session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
             {"error": "代码模块未启用（ENABLE_CODE_AGENT=False）"},
@@ -928,7 +972,11 @@ async def workspace_open(req: WorkspaceOpenRequest):
         )
 
     try:
-        p = add_session_workspace(req.session_id, req.project_path)
+        p = run_if_current(
+            req.session_id,
+            session_generation,
+            lambda: add_session_workspace(req.session_id, req.project_path),
+        )
         # 检查是否是新打开的还是已存在
         current = get_session_workspaces(req.session_id)
         # 通过对比添加前后数量判断（add_session_workspace 是幂等的）
@@ -941,6 +989,8 @@ async def workspace_open(req: WorkspaceOpenRequest):
             status=status,
             current_projects=[str(x) for x in current],
         )
+    except SessionDeletingError:
+        raise
     except ValueError as e:
         return JSONResponse(
             {"error": str(e)},
@@ -972,6 +1022,7 @@ async def workspace_open_file(req: WorkspaceOpenFileRequest):
         - status="already_open"  → 该文件已注册过（幂等）
     """
     validate_session_id(req.session_id)
+    session_generation = begin_request(req.session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
             {"error": "代码模块未启用（ENABLE_CODE_AGENT=False）"},
@@ -980,7 +1031,11 @@ async def workspace_open_file(req: WorkspaceOpenFileRequest):
 
     try:
         before = [str(p) for p in get_session_open_files(req.session_id)]
-        p = add_session_open_file(req.session_id, req.file_path)
+        p = run_if_current(
+            req.session_id,
+            session_generation,
+            lambda: add_session_open_file(req.session_id, req.file_path),
+        )
         after = [str(x) for x in get_session_open_files(req.session_id)]
         status = "already_open" if str(p) in before else "opened"
         return WorkspaceOpenFileResponse(
@@ -990,6 +1045,8 @@ async def workspace_open_file(req: WorkspaceOpenFileRequest):
             parent_dir=str(p.parent),
             status=status,
         )
+    except SessionDeletingError:
+        raise
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     except Exception as e:
@@ -1013,6 +1070,7 @@ async def workspace_tree(
     返回：{name, path, type, children: [...]}
     """
     validate_session_id(session_id)
+    session_generation = begin_request(session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
             {"error": "代码模块未启用（ENABLE_CODE_AGENT=False）"},
@@ -1023,6 +1081,7 @@ async def workspace_tree(
         depth = WORKSPACE_TREE_DEFAULT_DEPTH
 
     result = list_tree_impl(path, session_id=session_id, depth=depth)
+    require_current(session_id, session_generation)
     if "error" in result:
         return JSONResponse({"error": result["error"]}, status_code=400)
     return result
@@ -1041,6 +1100,7 @@ async def workspace_file(
     返回：{filepath, content, size}
     """
     validate_session_id(session_id)
+    session_generation = begin_request(session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
             {"error": "代码模块未启用（ENABLE_CODE_AGENT=False）"},
@@ -1048,6 +1108,7 @@ async def workspace_file(
         )
 
     content = read_workspace_file_impl(filepath, session_id=session_id)
+    require_current(session_id, session_generation)
     if content.startswith("错误："):
         return JSONResponse({"error": content}, status_code=400)
 
@@ -1070,17 +1131,22 @@ async def workspace_save(req: WorkspaceSaveRequest):
     返回：{status, snapshot_id, filepath}
     """
     validate_session_id(req.session_id)
+    session_generation = begin_request(req.session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
             {"error": "代码模块未启用（ENABLE_CODE_AGENT=False）"},
             status_code=403,
         )
 
-    result = save_workspace_file_impl(
-        req.filepath,
-        req.content,
-        session_id=req.session_id,
-        base_content_sha256=req.base_content_sha256,
+    result = run_if_current(
+        req.session_id,
+        session_generation,
+        lambda: save_workspace_file_impl(
+            req.filepath,
+            req.content,
+            session_id=req.session_id,
+            base_content_sha256=req.base_content_sha256,
+        ),
     )
     if result.get("status") == "conflict":
         return WorkspaceSaveResponse(
@@ -1119,6 +1185,7 @@ async def workspace_status(session_id: str = Query(..., description="会话 ID")
       }
     """
     validate_session_id(session_id)
+    session_generation = begin_request(session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
             {"error": "代码模块未启用（ENABLE_CODE_AGENT=False）"},
@@ -1127,6 +1194,7 @@ async def workspace_status(session_id: str = Query(..., description="会话 ID")
 
     workspaces = get_session_workspaces(session_id)
     open_files = get_session_open_files(session_id)
+    require_current(session_id, session_generation)
     return {
         "session_id": session_id,
         "projects": [{"name": p.name, "path": str(p)} for p in workspaces],
@@ -1150,13 +1218,18 @@ async def workspace_close(
     返回：{session_id, removed_count, status}
     """
     validate_session_id(session_id)
+    session_generation = begin_request(session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
             {"error": "代码模块未启用（ENABLE_CODE_AGENT=False）"},
             status_code=403,
         )
 
-    removed = remove_session_workspace(session_id, project_path)
+    removed = run_if_current(
+        session_id,
+        session_generation,
+        lambda: remove_session_workspace(session_id, project_path),
+    )
     return {
         "session_id": session_id,
         "removed_count": removed,

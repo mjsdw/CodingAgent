@@ -1,6 +1,10 @@
 """Thread-safe lifecycle guards for session-scoped asynchronous work."""
 
 import threading
+from typing import Callable, TypeVar
+
+
+T = TypeVar("T")
 
 
 class SessionDeletingError(RuntimeError):
@@ -43,3 +47,19 @@ def require_current(session_id: str, generation: int) -> None:
         current = _GENERATIONS.get(session_id, 0)
         if session_id in _DELETING or generation != current:
             raise SessionDeletingError("会话已被删除，已丢弃迟到结果")
+
+
+def run_if_current(
+    session_id: str,
+    generation: int,
+    operation: Callable[[], T],
+) -> T:
+    """仅在会话代际仍有效时执行短时写操作。
+
+    校验和写入共用同一把锁，保证 begin_delete 无法插入两者之间。
+    """
+    with _LOCK:
+        current = _GENERATIONS.get(session_id, 0)
+        if session_id in _DELETING or generation != current:
+            raise SessionDeletingError("会话已被删除，已拒绝迟到写入")
+        return operation()
