@@ -1766,6 +1766,7 @@
           model,
           savedContent: data.content,
           savedContentSha256: data.content_sha256,
+          hasDiskConflict: false,
         };
         openTabs.push(tab);
         renderTabs();
@@ -1806,6 +1807,16 @@
 
     function hasUnsavedChanges(tab) {
       return Boolean(tab && tab.model && tab.model.getValue() !== tab.savedContent);
+    }
+
+    function reportEditorDiskConflict(tab) {
+      statusProject.textContent = `⚠️ ${tab.name} 的磁盘版本已变化，本地修改已保留`;
+      if (tab.hasDiskConflict) return;
+      tab.hasDiskConflict = true;
+      appendMessage(
+        'assistant',
+        `⚠️ ${tab.name} 在磁盘上已发生变化。编辑器中的未保存内容已保留，未自动覆盖。请先复制本地修改，再重新打开文件或手动合并。`
+      );
     }
 
     function confirmDiscardUnsavedChanges(tabs, actionLabel) {
@@ -1921,7 +1932,10 @@
           );
         }
 
-        await refreshModifiedFilesAfterConfirm([{ filepath: tab.filepath }]);
+        await refreshModifiedFilesAfterConfirm(
+          [{ filepath: tab.filepath }],
+          { overwriteDirty: true }
+        );
         statusProject.textContent = `↩️ 已撤销 ${tab.name} 的最近一次修改`;
         appendMessage('assistant', `↩️ 已撤销 ${tab.name} 的最近一次修改，剩余 ${data.remaining_undos} 次可撤销。`);
         setTimeout(() => {
@@ -1960,6 +1974,7 @@
         if (data.status === 'saved') {
           tab.savedContent = content;
           tab.savedContentSha256 = data.content_sha256;
+          tab.hasDiskConflict = false;
           statusProject.textContent = `✅ 已保存 ${tab.name}（快照ID=${data.snapshot_id}）`;
           await refreshUndoButton();
           setTimeout(() => {
@@ -2259,11 +2274,16 @@
             const fileData = await resp.json();
             const currentContent = tab.model.getValue();
             if (fileData.content !== currentContent) {
+              if (hasUnsavedChanges(tab)) {
+                reportEditorDiskConflict(tab);
+                continue;
+              }
               // 文件被修改，更新编辑器内容（保留光标位置）
               const position = editor.getPosition();
               tab.model.setValue(fileData.content);
               tab.savedContent = fileData.content;
               tab.savedContentSha256 = fileData.content_sha256;
+              tab.hasDiskConflict = false;
               if (tab === activeTab && position) {
                 editor.setPosition(position);
               }
@@ -2556,7 +2576,7 @@
     }
 
     // 确认后刷新被修改的文件
-    async function refreshModifiedFilesAfterConfirm(modifiedFiles) {
+    async function refreshModifiedFilesAfterConfirm(modifiedFiles, { overwriteDirty = false } = {}) {
       for (const result of modifiedFiles) {
         const filepath = result.filepath;
         // 如果文件已在编辑器中打开，刷新内容
@@ -2568,10 +2588,15 @@
             );
             if (resp.ok) {
               const fileData = await resp.json();
+              if (!overwriteDirty && hasUnsavedChanges(tab)) {
+                reportEditorDiskConflict(tab);
+                continue;
+              }
               const position = editor.getPosition();
               tab.model.setValue(fileData.content);
               tab.savedContent = fileData.content;
               tab.savedContentSha256 = fileData.content_sha256;
+              tab.hasDiskConflict = false;
               if (tab === activeTab && position) {
                 editor.setPosition(position);
               }
