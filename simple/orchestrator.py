@@ -124,6 +124,7 @@ class Orchestrator:
             session_id=session_id,
             history=history,
             task_control=task_control,
+            session_generation=session_generation,
         )
 
         # ---- 2. Router 选 Skill ----

@@ -14,6 +14,7 @@
 
 import difflib
 
+from core.session_lifecycle import begin_request, run_if_current
 from tools.code_tool.atomic_write import atomic_write_text
 from tools.code_tool.path_security import _validate_path, _validate_write_path
 from tools.code_tool.snapshot import (
@@ -57,7 +58,13 @@ def _generate_diff(old_content: str, new_content: str, filepath: str) -> str:
     return "".join(diff)
 
 
-def preview_edit_impl(filepath: str, old_string: str, new_string: str, session_id: str = None) -> dict:
+def preview_edit_impl(
+    filepath: str,
+    old_string: str,
+    new_string: str,
+    session_id: str = None,
+    session_generation: int = None,
+) -> dict:
     """预览 edit_file 修改（不实际执行），暂存到待确认列表。
 
     :return: {status, filepath, diff, pending_count} 或 {error}
@@ -68,6 +75,7 @@ def preview_edit_impl(filepath: str, old_string: str, new_string: str, session_i
         return {"error": str(e)}
 
     sid = session_id or "default"
+    generation = session_generation if session_generation is not None else begin_request(sid)
     existing = _find_pending_modification(sid, str(p))
     if not p.exists() and existing is None:
         return {"error": f"文件不存在: {p}"}
@@ -100,7 +108,7 @@ def preview_edit_impl(filepath: str, old_string: str, new_string: str, session_i
         "diff": diff,
         "is_new": existing.get("is_new", False) if existing else False,
     }
-    _store_pending_modification(sid, modification)
+    run_if_current(sid, generation, lambda: _store_pending_modification(sid, modification))
 
     pending = _PENDING_MODIFICATIONS.get(sid, [])
     return {
@@ -111,7 +119,12 @@ def preview_edit_impl(filepath: str, old_string: str, new_string: str, session_i
     }
 
 
-def preview_write_impl(filepath: str, content: str, session_id: str = None) -> dict:
+def preview_write_impl(
+    filepath: str,
+    content: str,
+    session_id: str = None,
+    session_generation: int = None,
+) -> dict:
     """预览 write_file 修改（不实际执行），暂存到待确认列表。
 
     :return: {status, filepath, diff, pending_count, is_new} 或 {error}
@@ -122,6 +135,7 @@ def preview_write_impl(filepath: str, content: str, session_id: str = None) -> d
         return {"error": str(e)}
 
     sid = session_id or "default"
+    generation = session_generation if session_generation is not None else begin_request(sid)
     existing = _find_pending_modification(sid, str(p))
     is_new = existing.get("is_new", False) if existing else not p.exists()
     old_content = (
@@ -134,14 +148,15 @@ def preview_write_impl(filepath: str, content: str, session_id: str = None) -> d
     diff = _generate_diff(old_content, content, str(p))
 
     # 暂存；write_file 的内容是目标完整版本，同一路径只保留最新累计结果。
-    _store_pending_modification(sid, {
+    modification = {
         "filepath": str(p),
         "action": "write_file",
         "old_content": old_content,
         "new_content": content,
         "diff": diff,
         "is_new": is_new,
-    })
+    }
+    run_if_current(sid, generation, lambda: _store_pending_modification(sid, modification))
 
     pending = _PENDING_MODIFICATIONS.get(sid, [])
     return {

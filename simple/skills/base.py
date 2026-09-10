@@ -40,6 +40,7 @@ class SkillContext:
     session_id: Optional[str] = None
     history: list[dict] = field(default_factory=list)
     task_control: Optional[object] = None   # TaskControl，类型用 object 避免循环导入
+    session_generation: Optional[int] = None
 
 
 # ===================== 任务控制辅助函数 =====================

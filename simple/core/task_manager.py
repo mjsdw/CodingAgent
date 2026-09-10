@@ -304,6 +304,23 @@ def run_task(tc: TaskControl, orch, question: str, session_id: str):
     except TaskCancelled:
         print(f"🛑 [TaskManager] 任务 {tc.task_id} 已取消")
     except Exception as e:
+        # 删除会话导致的迟到异常必须清理 pending Diff 和 checkpoint。
+        # 普通异常不清空整个会话，避免误删同会话其他任务的预览。
+        stale_session = tc.is_cancelled
+        if not stale_session:
+            try:
+                from core.session_lifecycle import require_current
+                require_current(session_id, tc.session_generation)
+            except Exception:
+                stale_session = True
+        if stale_session:
+            try:
+                from tools.code_tool import cancel_modifications
+                from skills.code_gen import delete_code_checkpoints
+                cancel_modifications(session_id=session_id)
+                delete_code_checkpoints([tc.task_id])
+            except Exception as cleanup_error:
+                print(f"⚠️ [TaskManager] 任务 {tc.task_id} 异常清理失败: {cleanup_error}")
         tc.mark_error(str(e))
         print(f"❌ [TaskManager] 任务 {tc.task_id} 出错: {e}")
     finally:

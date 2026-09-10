@@ -98,6 +98,7 @@ class CodeState(TypedDict, total=False):
     _route_signal: str
     # Diff 预览相关
     session_id: str               # 会话 ID（用于 preview/confirm 的暂存隔离）
+    session_generation: int       # 请求启动时的会话生命周期版本
     pending_modifications: list   # 待确认修改列表（来自 preview_edit/write）
     # 任务控制（暂停/继续/取消）
     task_control: object          # TaskControl 实例（可选）
@@ -380,7 +381,11 @@ def _exec_edit_file(action_input: dict, state: CodeState) -> str:
         print(f"✅ [CodeGen] edit 参数已生成（{explanation[:80]}）")
 
     session_id = state.get("session_id", "default")
-    result = preview_edit_impl(filepath, old_string, new_string, session_id=session_id)
+    result = preview_edit_impl(
+        filepath, old_string, new_string,
+        session_id=session_id,
+        session_generation=state.get("session_generation"),
+    )
 
     if "error" in result:
         return f"错误：{result['error']}"
@@ -427,7 +432,11 @@ def _exec_write_file(action_input: dict, state: CodeState) -> str:
         print(f"✅ [CodeGen] write 内容已生成（{explanation[:80]}）")
 
     session_id = state.get("session_id", "default")
-    result = preview_write_impl(filepath, content, session_id=session_id)
+    result = preview_write_impl(
+        filepath, content,
+        session_id=session_id,
+        session_generation=state.get("session_generation"),
+    )
 
     if "error" in result:
         return f"错误：{result['error']}"
@@ -1016,6 +1025,7 @@ class CodeGenSkill(BaseSkill):
             "done": False,
             "_route_signal": "",
             "session_id": session_id,
+            "session_generation": ctx.session_generation,
             "pending_modifications": [],
         }
 
