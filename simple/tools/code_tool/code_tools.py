@@ -33,7 +33,7 @@ from config import (
 from tools.code_tool.path_security import (
     _validate_path, _validate_write_path, _get_effective_allowed,
 )
-from tools.code_tool.snapshot import _create_snapshot
+from tools.code_tool.snapshot import _create_snapshot, _create_creation_snapshot
 
 
 # ------------------------------------------------------------------
@@ -122,6 +122,10 @@ def write_file_impl(filepath: str, content: str, session_id: str = None) -> str:
     snapshot_id = 0
     if p.exists():
         snapshot_id = _create_snapshot(filepath, f"write: 全量覆写", session_id=session_id)
+    else:
+        snapshot_id = _create_creation_snapshot(
+            filepath, content, "write: 新建文件", session_id=session_id
+        )
 
     # 确保父目录存在
     p.parent.mkdir(parents=True, exist_ok=True)

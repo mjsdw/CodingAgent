@@ -1821,7 +1821,9 @@
         }
         const data = await resp.json();
         if (data.status !== 'undone') {
-          throw new Error(data.status === 'no_history' ? '没有可撤销的修改' : '撤销失败');
+          throw new Error(
+            data.error || (data.status === 'no_history' ? '没有可撤销的修改' : '撤销失败')
+          );
         }
 
         await refreshModifiedFilesAfterConfirm([{ filepath: tab.filepath }]);

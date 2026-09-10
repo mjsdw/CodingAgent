@@ -1,3 +1,4 @@
+# 马杰
 # app.py
 # ========== FastAPI Web 服务 ==========
 #
@@ -96,6 +97,7 @@ class CodeUndoResponse(BaseModel):
     snapshot_id: int               # 本次撤销的快照 ID（0 表示无历史可撤销）
     remaining_undos: int           # 剩余可撤销次数
     status: str                    # "undone" / "no_history" / "disabled" / "error"
+    error: str = ""
 
 
 class CodeHistoryItem(BaseModel):
@@ -556,6 +558,7 @@ async def code_undo(req: CodeUndoRequest):
             snapshot_id=result.get("snapshot_id", 0),
             remaining_undos=result.get("remaining_undos", 0),
             status=result.get("status", "error"),
+            error=result.get("error", ""),
         )
     except ValueError as e:
         # 路径安全校验失败
