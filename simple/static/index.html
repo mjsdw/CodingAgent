@@ -1,14 +1,16 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-auth-page="app" class="auth-pending">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CodeAgent · AI 编程助手</title>
+  <script src="/static/auth.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    html.auth-pending body { visibility: hidden; }
     :root {
       --bg: #ffffff;
       --surface: #fbfbfd;
@@ -107,7 +109,7 @@
       font-weight: 500;
       letter-spacing: 0;
     }
-    #open-project-btn, #close-project-btn {
+    #open-project-btn, #close-project-btn, #manage-projects-btn {
       background: var(--surface-2);
       color: var(--text);
       border: 1px solid var(--border);
@@ -124,38 +126,9 @@
       gap: 5px;
       height: 24px;
     }
-    #open-project-btn:hover, #close-project-btn:hover { background: #fff; border-color: var(--border-strong); box-shadow: var(--shadow-xs); }
-    #open-project-btn:active, #close-project-btn:active { transform: translateY(0); }
-    #open-project-btn:disabled, #close-project-btn:disabled { background: var(--surface-2); color: var(--text-subtle); cursor: not-allowed; box-shadow: none; transform: none; opacity: 0.7; }
-    #project-path-input {
-      background: #fff;
-      border: 1px solid var(--border);
-      color: var(--text);
-      padding: 0 10px;
-      border-radius: var(--radius-sm);
-      font-size: 11.5px;
-      font-family: var(--font-mono);
-      width: 240px;
-      outline: none;
-      transition: all 0.15s;
-      height: 24px;
-    }
-    #project-path-input:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-glow); }
-    #project-path-input::placeholder { color: var(--text-subtle); }
-    #open-path-btn {
-      background: var(--accent);
-      color: #fff;
-      border: 1px solid var(--accent);
-      padding: 0 10px;
-      border-radius: var(--radius-sm);
-      font-size: 11.5px;
-      font-weight: 500;
-      cursor: pointer;
-      font-family: var(--font-ui);
-      height: 24px;
-      transition: background 0.15s;
-    }
-    #open-path-btn:hover { background: var(--accent-hover); }
+    #open-project-btn:hover, #close-project-btn:hover, #manage-projects-btn:hover { background: #fff; border-color: var(--border-strong); box-shadow: var(--shadow-xs); }
+    #open-project-btn:active, #close-project-btn:active, #manage-projects-btn:active { transform: translateY(0); }
+    #open-project-btn:disabled, #close-project-btn:disabled, #manage-projects-btn:disabled { background: var(--surface-2); color: var(--text-subtle); cursor: not-allowed; box-shadow: none; transform: none; opacity: 0.7; }
     .header-spacer { flex: 1; }
     #session-info {
       font-size: 10.5px;
@@ -182,6 +155,41 @@
       gap: 5px;
     }
     #clear-btn:hover { border-color: var(--border-strong); color: var(--text); background: var(--surface-2); }
+    #current-user {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+    #current-username {
+      max-width: 120px;
+      overflow: hidden;
+      color: var(--text);
+      font-weight: 600;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #app-auth-message { color: var(--error); }
+    #logout-btn {
+      height: 24px;
+      padding: 0 9px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      background: transparent;
+      font-family: var(--font-ui);
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    #logout-btn:hover:not(:disabled) {
+      border-color: var(--border-strong);
+      color: var(--text);
+      background: var(--surface-2);
+    }
+    #logout-btn:disabled { cursor: wait; opacity: 0.65; }
 
     /* ---- 四栏主体 ---- */
     #main-body {
@@ -1107,12 +1115,144 @@
     }
     .sessions-empty .empty-icon { display: block; margin-bottom: 8px; opacity: 0.45; }
 
+    /* ---- 私有项目管理 ---- */
+    #project-manager-overlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(15,15,25,0.18);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      z-index: 1250;
+    }
+    #project-manager-overlay.active { display: flex; }
+    #project-manager-modal {
+      width: 760px;
+      max-width: 96vw;
+      max-height: 82vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-lg);
+    }
+    #project-manager-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px 20px 12px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .project-manager-heading { min-width: 0; }
+    #project-manager-title { font-size: 15px; font-weight: 700; color: var(--text); }
+    .project-manager-subtitle { margin-top: 4px; color: var(--text-muted); font-size: 11.5px; line-height: 1.5; }
+    .project-manager-header-actions { display: flex; align-items: center; gap: 8px; }
+    #project-manager-refresh-btn, #project-manager-close-btn {
+      min-width: 30px;
+      height: 30px;
+      padding: 0 9px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: #fff;
+      color: var(--text-muted);
+      cursor: pointer;
+      font: 500 11.5px var(--font-ui);
+    }
+    #project-manager-refresh-btn:hover, #project-manager-close-btn:hover {
+      color: var(--text);
+      border-color: var(--border-strong);
+      background: var(--surface-2);
+    }
+    #project-manager-list {
+      flex: 1;
+      min-height: 180px;
+      overflow-y: auto;
+      padding: 12px;
+      background: var(--surface);
+    }
+    .project-manager-empty {
+      padding: 60px 20px;
+      color: var(--text-subtle);
+      font-size: 13px;
+      line-height: 1.8;
+      text-align: center;
+    }
+    .managed-project-card {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px 20px;
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      background: #fff;
+      box-shadow: var(--shadow-xs);
+    }
+    .managed-project-card.current { border-color: #a5b4fc; background: var(--accent-soft); }
+    .managed-project-main { min-width: 0; }
+    .managed-project-name-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .managed-project-name {
+      overflow: hidden;
+      color: var(--text);
+      font-size: 13.5px;
+      font-weight: 700;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .managed-project-status {
+      flex-shrink: 0;
+      padding: 2px 7px;
+      border-radius: 20px;
+      background: var(--surface-2);
+      color: var(--text-muted);
+      font-size: 10.5px;
+      font-weight: 600;
+    }
+    .managed-project-status.current, .managed-project-status.connected { background: var(--success-soft); color: var(--success); }
+    .managed-project-status.warning { background: var(--warning-soft); color: var(--warning); }
+    .managed-project-meta { margin-top: 7px; color: var(--text-subtle); font: 10.5px var(--font-mono); }
+    .managed-project-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 7px;
+      flex-wrap: wrap;
+      max-width: 330px;
+    }
+    .managed-project-action {
+      height: 28px;
+      padding: 0 10px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      background: #fff;
+      color: var(--text-muted);
+      cursor: pointer;
+      font: 600 11px var(--font-ui);
+      white-space: nowrap;
+    }
+    .managed-project-action:hover:not(:disabled) { color: var(--text); box-shadow: var(--shadow-xs); }
+    .managed-project-action.primary { color: var(--accent); border-color: #c7d2fe; background: var(--accent-soft); }
+    .managed-project-action.danger { color: var(--error); border-color: #fecaca; background: var(--error-soft); }
+    .managed-project-action:disabled { cursor: wait; opacity: 0.55; }
+
+    @media (max-width: 680px) {
+      #project-manager-overlay { padding: 10px; }
+      .managed-project-card { grid-template-columns: 1fr; }
+      .managed-project-actions { justify-content: flex-start; max-width: none; }
+    }
+
     @media (max-width: 1100px) {
       #main-body { grid-template-columns: 48px 220px 1fr 340px; }
     }
     @media (max-width: 920px) {
       #main-body { grid-template-columns: 48px 190px 1fr 300px; }
-      #project-path-input { width: 180px; }
     }
     @media (max-width: 760px) {
       #activity-bar { display: none; }
@@ -1126,10 +1266,15 @@
     <h1><span class="logo-dot"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg></span>CodeAgent</h1>
     <span class="subtitle" id="mode-label">IDE 模式</span>
     <button id="open-project-btn">打开项目</button>
+    <button id="manage-projects-btn" title="管理我的服务器项目">项目管理</button>
     <button id="close-project-btn" title="关闭当前显示的项目" disabled>关闭当前项目</button>
-    <input type="text" id="project-path-input" placeholder="或手动输入项目路径，如 d:/myproject" style="display:none;">
-    <button id="open-path-btn" style="display:none;">打开</button>
     <div class="header-spacer"></div>
+    <span id="current-user" title="当前登录用户">
+      <span aria-hidden="true">●</span>
+      <span id="current-username">加载中</span>
+      <span id="app-auth-message" role="status" aria-live="polite"></span>
+    </span>
+    <button id="logout-btn" type="button">退出</button>
     <span id="session-info">会话：加载中</span>
     <button id="history-btn" title="查看历史会话">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
@@ -1286,8 +1431,28 @@
     </div>
   </div>
 
+  <!-- 当前登录用户的私有项目管理面板 -->
+  <div id="project-manager-overlay" role="dialog" aria-modal="true" aria-labelledby="project-manager-title">
+    <div id="project-manager-modal">
+      <div id="project-manager-header">
+        <div class="project-manager-heading">
+          <div id="project-manager-title">我的项目</div>
+          <div class="project-manager-subtitle">这里只管理服务器副本和浏览器授权；永久删除不会删除你电脑上的本地目录。</div>
+        </div>
+        <div class="project-manager-header-actions">
+          <button id="project-manager-refresh-btn" type="button">刷新</button>
+          <button id="project-manager-close-btn" type="button" title="关闭">✕</button>
+        </div>
+      </div>
+      <div id="project-manager-list">
+        <div class="project-manager-empty">加载中...</div>
+      </div>
+    </div>
+  </div>
+
   <!-- Monaco Editor CDN -->
   <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+  <script src="/static/local-project.js"></script>
   <script>
     const chatArea = document.getElementById('chat-area');
     const inputForm = document.getElementById('input-form');
@@ -1299,9 +1464,12 @@
     const sessionInfo = document.getElementById('session-info');
     const clearBtn = document.getElementById('clear-btn');
     const openProjectBtn = document.getElementById('open-project-btn');
+    const manageProjectsBtn = document.getElementById('manage-projects-btn');
     const closeProjectBtn = document.getElementById('close-project-btn');
-    const projectPathInput = document.getElementById('project-path-input');
-    const openPathBtn = document.getElementById('open-path-btn');
+    const projectManagerOverlay = document.getElementById('project-manager-overlay');
+    const projectManagerList = document.getElementById('project-manager-list');
+    const projectManagerRefreshBtn = document.getElementById('project-manager-refresh-btn');
+    const projectManagerCloseBtn = document.getElementById('project-manager-close-btn');
     const treeContainer = document.getElementById('tree-container');
     const projectNameDisplay = document.getElementById('project-name-display');
     const editorTabs = document.getElementById('editor-tabs');
@@ -1327,105 +1495,283 @@
     // 提交消息时捕获当前代际，轮询/渲染结果前比对——不一致说明用户已切换会话，
     // 旧任务的结果不再写入当前聊天区（其答案已存旧会话历史，切回可见）
     let chatEpoch = 0;
-    let currentWorkspacePaths = [];
+    let workspaceEpoch = 0;
+    let workspaceRefreshSequence = 0;
+    let sessionNavigationEpoch = 0;
+    let uploadOperationSequence = 0;
+    let projectManagerRequestSequence = 0;
+    let activeUploadOperation = null;
+    const projectManagerInFlight = new Map();
+    const projectDeletionInProgress = new Set();
+    const PROJECTS_API_BASE = '/api/projects';
+    let currentProjectIds = [];
+    let currentProjectId = null;
     let currentProjectPath = null;
-    const WORKSPACE_STORAGE_KEY = 'rag_workspace_paths';
+    let currentUserId = '';
+    let currentSessionId = '';
+    let SESSION_STORAGE_KEY = '';
+    let PROJECT_STORAGE_KEY = '';
+    let managedProjects = [];
 
-    function loadWorkspacePaths() {
+    function captureWorkspaceContext() {
+      return { sessionId: currentSessionId, epoch: workspaceEpoch };
+    }
+
+    function isWorkspaceContextCurrent(context) {
+      return Boolean(
+        context
+        && context.sessionId === currentSessionId
+        && context.epoch === workspaceEpoch
+      );
+    }
+
+    function beginSessionNavigation() {
+      sessionNavigationEpoch += 1;
+      return sessionNavigationEpoch;
+    }
+
+    function isSessionNavigationCurrent(token) {
+      return token === sessionNavigationEpoch;
+    }
+
+    function activateSessionContext(sessionId) {
+      currentSessionId = sessionId;
+      workspaceEpoch += 1;
+      chatEpoch += 1;
+      return captureWorkspaceContext();
+    }
+
+    function configureUserStorage(userId) {
+      SESSION_STORAGE_KEY = `rag_session_id:${userId}`;
+      PROJECT_STORAGE_KEY = `rag_project_ids:${userId}`;
+    }
+
+    function normalizeProjectIds(projectIds) {
+      if (!Array.isArray(projectIds)) return [];
+      return [...new Set(
+        projectIds.filter(projectId => typeof projectId === 'string' && projectId.trim())
+      )];
+    }
+
+    function loadProjectIdsBySession() {
       try {
-        const stored = JSON.parse(localStorage.getItem(WORKSPACE_STORAGE_KEY) || '[]');
-        if (!Array.isArray(stored)) return [];
-        return [...new Set(stored.filter(path => typeof path === 'string' && path.trim()))];
+        const stored = JSON.parse(localStorage.getItem(PROJECT_STORAGE_KEY) || '{}');
+        if (!stored || Array.isArray(stored) || typeof stored !== 'object') return {};
+        const normalized = {};
+        for (const [sessionId, projectIds] of Object.entries(stored)) {
+          if (typeof sessionId !== 'string' || !sessionId.trim()) continue;
+          normalized[sessionId] = normalizeProjectIds(projectIds);
+        }
+        return normalized;
       } catch (e) {
-        localStorage.removeItem(WORKSPACE_STORAGE_KEY);
-        return [];
+        localStorage.removeItem(PROJECT_STORAGE_KEY);
+        return {};
       }
     }
 
-    function saveWorkspacePaths(projectPaths) {
-      const normalized = [...new Set(
-        projectPaths.filter(path => typeof path === 'string' && path.trim())
-      )];
-      localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(normalized));
+    function loadProjectIdsForSession(sessionId) {
+      return normalizeProjectIds(loadProjectIdsBySession()[sessionId]);
     }
 
-    function getSessionId() {
-      let sid = localStorage.getItem('rag_session_id');
+    function saveProjectIdsForSession(sessionId, projectIds) {
+      if (!sessionId) return;
+      const stored = loadProjectIdsBySession();
+      const normalized = normalizeProjectIds(projectIds);
+      if (normalized.length > 0) {
+        stored[sessionId] = normalized;
+      } else {
+        delete stored[sessionId];
+      }
+      localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(stored));
+    }
+
+    function removeProjectIdsForSession(sessionId) {
+      const stored = loadProjectIdsBySession();
+      delete stored[sessionId];
+      localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(stored));
+    }
+
+    function removeProjectIdFromAllSessions(projectId) {
+      const stored = loadProjectIdsBySession();
+      let removed = 0;
+      for (const [sessionId, projectIds] of Object.entries(stored)) {
+        const remaining = projectIds.filter(storedProjectId => {
+          if (storedProjectId !== projectId) return true;
+          removed += 1;
+          return false;
+        });
+        if (remaining.length > 0) {
+          stored[sessionId] = remaining;
+        } else {
+          delete stored[sessionId];
+        }
+      }
+      localStorage.setItem(PROJECT_STORAGE_KEY, JSON.stringify(stored));
+      return removed;
+    }
+
+    async function createSession() {
+      const resp = await fetch('/api/sessions', { method: 'POST' });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.session_id) {
+        throw new Error(data.detail || data.error || `创建会话失败（HTTP ${resp.status}）`);
+      }
+      return data.session_id;
+    }
+
+    async function sessionIsAccessible(sessionId) {
+      const resp = await fetch(
+        `/api/sessions/${encodeURIComponent(sessionId)}/messages?limit=1`
+      );
+      if (resp.ok) return true;
+      if (resp.status === 400 || resp.status === 404) return false;
+      const data = await resp.json().catch(() => ({}));
+      throw new Error(data.detail || data.error || `校验会话失败（HTTP ${resp.status}）`);
+    }
+
+    async function getSessionId() {
+      let sid = localStorage.getItem(SESSION_STORAGE_KEY);
+      if (sid && !(await sessionIsAccessible(sid))) {
+        localStorage.removeItem(SESSION_STORAGE_KEY);
+        sid = null;
+      }
       if (!sid) {
-        sid = 'web-' + Math.random().toString(36).substring(2, 10);
-        localStorage.setItem('rag_session_id', sid);
+        sid = await createSession();
+        localStorage.setItem(SESSION_STORAGE_KEY, sid);
       }
       return sid;
     }
-    async function rebindProjectsToSession(projectPaths, sessionId) {
-      const failed = [];
-      for (const projectPath of projectPaths) {
-        try {
-          const resp = await fetch('/api/workspace/open', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ session_id: sessionId, project_path: projectPath }),
-          });
-          if (!resp.ok) {
-            const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
-            throw new Error(err.error || '重新绑定失败');
-          }
-        } catch (e) {
-          failed.push({ projectPath, error: e.message });
+    async function openProjectForSession(projectId, sessionId) {
+      const resp = await fetch(
+        `${PROJECTS_API_BASE}/${encodeURIComponent(projectId)}/open`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId }),
         }
+      );
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: `HTTP ${resp.status}` }));
+        throw new Error(err.detail || err.error || '重新绑定失败');
       }
-      return failed;
+      return await resp.json();
     }
 
-    async function restoreWorkspacePaths() {
-      const storedPaths = loadWorkspacePaths();
-      if (storedPaths.length === 0) return;
-
-      const failed = await rebindProjectsToSession(storedPaths, currentSessionId);
-      const failedPaths = new Set(failed.map(item => item.projectPath));
-      const restoredPaths = storedPaths.filter(path => !failedPaths.has(path));
-      currentWorkspacePaths = restoredPaths;
-
-      if (restoredPaths.length > 0) {
-        // openProject 会刷新根文件树，并根据后端实际结果校正 currentWorkspacePaths。
-        await openProject(restoredPaths[0]);
+    async function rebindProjectsToSession(projectIds, sessionId) {
+      const failed = [];
+      const opened = [];
+      for (const projectId of normalizeProjectIds(projectIds)) {
+        try {
+          opened.push(await openProjectForSession(projectId, sessionId));
+        } catch (e) {
+          failed.push({ projectId, error: e.message });
+        }
       }
+      return { opened, failed };
+    }
+
+    function projectIdSnapshotsMatch(leftProjectIds, rightProjectIds) {
+      if (leftProjectIds.length !== rightProjectIds.length) return false;
+      return leftProjectIds.every((projectId, index) => projectId === rightProjectIds[index]);
+    }
+
+    function reconcileProjectRebindSnapshot(sessionId, attemptedProjectIds, failedProjects) {
+      const attempted = normalizeProjectIds(attemptedProjectIds);
+      const latestProjectIds = loadProjectIdsForSession(sessionId);
+      const attemptedIds = new Set(attempted);
+      const failedAttemptedIds = new Set(
+        (Array.isArray(failedProjects) ? failedProjects : [])
+          .map(item => item && item.projectId)
+          .filter(projectId => attemptedIds.has(projectId))
+      );
+      const reconciledProjectIds = latestProjectIds.filter(
+        projectId => !failedAttemptedIds.has(projectId)
+      );
+      const snapshotChanged = !projectIdSnapshotsMatch(latestProjectIds, attempted);
+
+      // This read/compare/write sequence is deliberately synchronous: no stale
+      // snapshot is saved across an await, and concurrent additions/removals keep
+      // their latest order. Only IDs actually attempted and failed are removed.
+      if (!projectIdSnapshotsMatch(reconciledProjectIds, latestProjectIds)) {
+        saveProjectIdsForSession(sessionId, reconciledProjectIds);
+      }
+      return { projectIds: reconciledProjectIds, snapshotChanged };
+    }
+
+    async function restoreProjectIds(context = captureWorkspaceContext()) {
+      const attemptedProjectIds = loadProjectIdsForSession(context.sessionId);
+      if (attemptedProjectIds.length === 0) return;
+
+      const { failed } = await rebindProjectsToSession(
+        attemptedProjectIds,
+        context.sessionId,
+      );
+      const reconciliation = reconcileProjectRebindSnapshot(
+        context.sessionId,
+        attemptedProjectIds,
+        failed,
+      );
+      if (reconciliation.snapshotChanged || !isWorkspaceContextCurrent(context)) return;
+
+      currentProjectIds = reconciliation.projectIds;
+      currentProjectId = currentProjectIds[0] || null;
+
+      if (currentProjectIds.length > 0) {
+        await refreshWorkspaceFromStatus(currentProjectId, context);
+      }
+      if (!isWorkspaceContextCurrent(context)) return;
       if (failed.length > 0) {
         statusProject.textContent = `⚠️ ${failed.length} 个项目恢复失败`;
-        appendMessage('assistant', `⚠️ 以下项目在服务重启后恢复失败：\n${failed.map(item => `  • ${item.projectPath}: ${item.error}`).join('\n')}\n\n路径仍保存在当前浏览器中，下次刷新会再次尝试。`);
+        appendMessage('assistant', `⚠️ 以下项目在服务重启后恢复失败：\n${failed.map(item => `  • 项目 ${item.projectId}: ${item.error}`).join('\n')}\n\n失败项目不会绑定到当前会话，请重新选择本地目录。`);
       }
     }
 
     async function newSession(msg) {
+      const navigationToken = beginSessionNavigation();
       // 若有未确认的 diff 预览，先关闭（不调用 cancel，让旧会话 pending 自然遗留或由后端清理）
       if (diffOverlay.classList.contains('active')) {
         closeDiffPreview();
       }
-      const projectPaths = [...currentWorkspacePaths];
-      const sid = 'web-' + Math.random().toString(36).substring(2, 10);
-      localStorage.setItem('rag_session_id', sid);
-      currentSessionId = sid;
-      chatEpoch++;
+      const projectIds = [...currentProjectIds];
+      const sid = await createSession();
+      saveProjectIdsForSession(sid, projectIds);
+      if (!isSessionNavigationCurrent(navigationToken)) return;
+
+      localStorage.setItem(SESSION_STORAGE_KEY, sid);
+      const context = activateSessionContext(sid);
       sessionInfo.textContent = `会话：${sid}`;
       chatArea.innerHTML = `<div class="message assistant"><div class="bubble">${msg || '已开启新会话。请提问。'}</div></div>`;
       questionInput.disabled = true;
       submitBtn.disabled = true;
       try {
-        const failed = await rebindProjectsToSession(projectPaths, sid);
-        await loadPendingModifications({ showPreview: false });
+        const { failed } = await rebindProjectsToSession(projectIds, sid);
+        const reconciliation = reconcileProjectRebindSnapshot(sid, projectIds, failed);
+        if (reconciliation.snapshotChanged || !isWorkspaceContextCurrent(context)) return;
+
+        currentProjectIds = reconciliation.projectIds;
+        currentProjectId = currentProjectIds[0] || null;
+        if (currentProjectIds.length > 0) {
+          await refreshWorkspaceFromStatus(currentProjectId, context);
+        } else {
+          clearWorkspaceDisplay();
+        }
+        if (!isWorkspaceContextCurrent(context)) return;
+        await loadPendingModifications({ showPreview: false, context });
+        if (!isWorkspaceContextCurrent(context)) return;
         await refreshUndoButton();
+        if (!isWorkspaceContextCurrent(context)) return;
         if (failed.length > 0) {
           statusProject.textContent = `⚠️ ${failed.length} 个项目重新绑定失败`;
-          appendMessage('assistant', `⚠️ 新会话已创建，但以下项目重新绑定失败：\n${failed.map(item => `  • ${item.projectPath}: ${item.error}`).join('\n')}\n\n请重新打开这些项目后再继续。`);
+          appendMessage('assistant', `⚠️ 新会话已创建，但以下项目重新绑定失败：\n${failed.map(item => `  • 项目 ${item.projectId}: ${item.error}`).join('\n')}\n\n请重新选择本地目录后再继续。`);
         }
       } finally {
-        questionInput.disabled = false;
-        submitBtn.disabled = false;
-        questionInput.focus();
+        if (isWorkspaceContextCurrent(context)) {
+          questionInput.disabled = false;
+          submitBtn.disabled = false;
+          questionInput.focus();
+        }
       }
     }
-    let currentSessionId = getSessionId();
-    sessionInfo.textContent = `会话：${currentSessionId}`;
     clearBtn.addEventListener('click', () => newSession());
 
     // ---- Monaco Editor 初始化 ----
@@ -1508,7 +1854,14 @@
         div.dataset.type = item.type;
 
         if (item.type === 'dir') {
-          div.innerHTML = `<span class="tree-icon">${TREE_ICON_DIR_CLOSED}</span><span class="tree-name">${item.name}</span>`;
+          const icon = document.createElement('span');
+          icon.className = 'tree-icon';
+          icon.innerHTML = TREE_ICON_DIR_CLOSED;
+          const name = document.createElement('span');
+          name.className = 'tree-name';
+          name.textContent = item.name;
+          div.appendChild(icon);
+          div.appendChild(name);
           div.addEventListener('click', async (e) => {
             e.stopPropagation();
             const childWrapper = div.nextElementSibling;
@@ -1555,7 +1908,14 @@
           }
         } else {
           const sizeStr = item.size < 1024 ? item.size + 'B' : (item.size / 1024).toFixed(1) + 'KB';
-          div.innerHTML = `<span class="tree-icon">${SVG_FILE}</span><span class="tree-name">${item.name}</span>`;
+          const icon = document.createElement('span');
+          icon.className = 'tree-icon';
+          icon.innerHTML = SVG_FILE;
+          const name = document.createElement('span');
+          name.className = 'tree-name';
+          name.textContent = item.name;
+          div.appendChild(icon);
+          div.appendChild(name);
           div.title = `${item.path} (${sizeStr})`;
           div.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -1567,103 +1927,433 @@
       container.appendChild(wrapper);
     }
 
-    async function loadTree(path, depth) {
+    async function loadTree(path, depth, context = captureWorkspaceContext()) {
       try {
         const resp = await fetch(
-          `/api/workspace/tree?session_id=${encodeURIComponent(currentSessionId)}&path=${encodeURIComponent(path)}&depth=${depth || 2}`
+          `/api/workspace/tree?session_id=${encodeURIComponent(context.sessionId)}&path=${encodeURIComponent(path)}&depth=${depth || 2}`
         );
-        if (!resp.ok) return null;
-        return await resp.json();
+        if (!resp.ok || !isWorkspaceContextCurrent(context)) return null;
+        const data = await resp.json();
+        return isWorkspaceContextCurrent(context) ? data : null;
       } catch (e) {
         return null;
       }
     }
 
-    // ---- 打开项目 ----
-    async function openProject(projectPath) {
-      if (!projectPath) return;
-      openProjectBtn.disabled = true;
-      openProjectBtn.textContent = '⏳ 打开中...';
-
-      try {
-        const resp = await fetch('/api/workspace/open', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_id: currentSessionId, project_path: projectPath }),
-        });
-        if (!resp.ok) {
-          const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
-          throw new Error(err.error || '打开失败');
-        }
-        const data = await resp.json();
-        if (data.status === 'error') throw new Error(data.error || '打开失败');
-
-        // 更新状态
-        currentWorkspacePaths = data.current_projects || [data.project_path];
-        currentProjectPath = data.project_path;
-        saveWorkspacePaths(currentWorkspacePaths);
-        closeProjectBtn.disabled = false;
-        statusProject.textContent = `● 工作区: ${data.project_name}`;
-        projectNameDisplay.textContent = data.project_name;
-        modeLabel.textContent = `项目: ${data.project_name}`;
-
-        // 加载文件树
-        const tree = await loadTree(data.project_path, 2);
-        if (tree && !tree.error) {
-          treeContainer.innerHTML = '';
-          renderTree(tree, treeContainer, 0);
-        } else {
-          treeContainer.innerHTML = '<div class="tree-empty">扫描失败</div>';
-        }
-      } catch (e) {
-        alert('打开项目失败: ' + e.message);
-        statusProject.textContent = '● 打开失败';
-      } finally {
-        openProjectBtn.disabled = false;
-        openProjectBtn.textContent = '📁 打开项目';
+    // ---- 授权并上传本地项目 ----
+    async function fetchWorkspaceStatus(sessionId) {
+      const query = new URLSearchParams({ session_id: sessionId });
+      const resp = await fetch('/api/workspace/status?' + query.toString());
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: `HTTP ${resp.status}` }));
+        throw new Error(err.detail || err.error || '读取工作区状态失败');
       }
+      return await resp.json();
     }
 
-    // 打开项目按钮：优先用 File System Access API，否则显示路径输入
-    openProjectBtn.addEventListener('click', async () => {
-      if (window.showDirectoryPicker) {
-        try {
-          const dirHandle = await window.showDirectoryPicker();
-          // 注意：浏览器沙箱限制，dirHandle 不能直接转为绝对路径
-          // 这里用 dirHandle.name 作为项目名，但路径需要用户手动确认
-          const confirmed = confirm(`已选择目录: ${dirHandle.name}\n\n由于浏览器安全限制，需手动输入完整路径。\n点击"确定"打开路径输入框。`);
-          if (confirmed) {
-            showPathInput(dirHandle.name);
-          }
-        } catch (e) {
-          if (e.name !== 'AbortError') showPathInput();
-        }
+    function beginWorkspaceRefresh(context) {
+      workspaceRefreshSequence += 1;
+      return { context, sequence: workspaceRefreshSequence };
+    }
+
+    function isWorkspaceRefreshCurrent(request) {
+      return Boolean(
+        request
+        && request.sequence === workspaceRefreshSequence
+        && isWorkspaceContextCurrent(request.context)
+      );
+    }
+
+    function clearWorkspaceDisplay(refreshRequest = null) {
+      if (refreshRequest) {
+        if (!isWorkspaceRefreshCurrent(refreshRequest)) return false;
       } else {
-        showPathInput();
+        // Direct clears (new/switch/close) supersede any in-flight status/tree request,
+        // including another request for the same session generation.
+        workspaceRefreshSequence += 1;
       }
-    });
+      currentProjectPath = null;
+      currentProjectId = null;
+      closeProjectBtn.disabled = true;
+      treeContainer.innerHTML = '<div class="tree-empty">点击「打开项目」选择目录</div>';
+      projectNameDisplay.textContent = '';
+      modeLabel.textContent = 'IDE 模式';
+      statusProject.textContent = '● 未打开项目';
+      return true;
+    }
 
-    function showPathInput(suggestedName) {
-      projectPathInput.style.display = '';
-      openPathBtn.style.display = '';
-      projectPathInput.focus();
-      if (suggestedName) {
-        projectPathInput.placeholder = `输入完整路径（如 d:/projects/${suggestedName}）`;
+    async function refreshWorkspaceFromStatus(
+      preferredProjectId = currentProjectId,
+      context = captureWorkspaceContext(),
+    ) {
+      const refreshRequest = beginWorkspaceRefresh(context);
+      const data = await fetchWorkspaceStatus(context.sessionId);
+      if (!isWorkspaceRefreshCurrent(refreshRequest)) return false;
+      const projects = Array.isArray(data.projects) ? data.projects : [];
+      if (projects.length === 0) {
+        return clearWorkspaceDisplay(refreshRequest);
+      }
+
+      const selectedProjectId = preferredProjectId || currentProjectIds[0] || null;
+      const workspace = selectedProjectId
+        ? projects.find(project => project.project_id === selectedProjectId)
+        : null;
+      if (!workspace) {
+        throw new Error('工作区状态中未找到当前私有项目');
+      }
+      const projectPath = workspace.path;
+      if (typeof projectPath !== 'string' || !projectPath) {
+        throw new Error('工作区状态未返回有效路径');
+      }
+
+      const tree = await loadTree(projectPath, 2, context);
+      if (!isWorkspaceRefreshCurrent(refreshRequest)) return false;
+
+      currentProjectId = workspace.project_id;
+      currentProjectPath = projectPath;
+      closeProjectBtn.disabled = false;
+      statusProject.textContent = `● 工作区: ${workspace.name}`;
+      projectNameDisplay.textContent = workspace.name;
+      modeLabel.textContent = `项目: ${workspace.name}`;
+
+      if (tree && !tree.error) {
+        treeContainer.innerHTML = '';
+        renderTree(tree, treeContainer, 0);
+      } else {
+        treeContainer.innerHTML = '<div class="tree-empty">扫描失败</div>';
+      }
+      return true;
+    }
+
+    const PROJECT_SYNC_POLL_INTERVAL_MS = 3000;
+    const projectSyncInFlight = new Map();
+    let projectSyncPollTimer = null;
+
+    function projectSyncKey(userId, projectId) {
+      return `${userId}:${projectId}`;
+    }
+
+    function projectSyncProgressMessage(event) {
+      if (!event || !event.phase) return '';
+      if (event.phase === 'listing') return '⏳ 正在检查服务器待同步修改...';
+      if (event.phase === 'downloading') return `⬇️ 正在下载：${event.relativePath}`;
+      if (event.phase === 'writing') return `✍️ 正在写入本地：${event.relativePath}`;
+      if (event.phase === 'verifying') return `🔎 正在校验本地：${event.relativePath}`;
+      if (event.phase === 'acknowledging') return '⏳ 正在确认本地同步结果...';
+      return '';
+    }
+
+    function localSyncPaths(items) {
+      return (Array.isArray(items) ? items : [])
+        .map(item => typeof item === 'string' ? item : item && item.relativePath)
+        .filter(path => typeof path === 'string' && path);
+    }
+
+    function reportProjectSyncResults(results, context, announce) {
+      if (!isWorkspaceContextCurrent(context)) return;
+      const normalized = Array.isArray(results) ? results : [];
+      const applied = normalized.flatMap(result => localSyncPaths(result.applied));
+      const conflicts = normalized.flatMap(result => localSyncPaths(result.conflicts));
+      const reconnectCount = normalized.filter(
+        result => result && result.status === 'reconnect_required'
+      ).length;
+      const failures = normalized.flatMap(
+        result => Array.isArray(result && result.failures) ? result.failures : []
+      );
+
+      if (failures.length > 0) {
+        const ackFailed = failures.some(failure => failure && failure.phase === 'ack');
+        statusProject.textContent = ackFailed
+          ? `⚠️ ${applied.length} 个文件已写入本地，服务器确认待重试`
+          : '⚠️ 本地同步失败，服务器修改已保留';
+        if (announce) {
+          appendMessage(
+            'assistant',
+            ackFailed
+              ? `⚠️ 已校验并写入 ${applied.length} 个本地文件，但服务器确认失败。修改仍处于待同步状态，系统会自动重试。`
+              : '⚠️ 本地同步未完成。服务器修改仍处于待同步状态，系统会自动重试；没有失败的文件会被误确认。'
+          );
+        }
+        return;
+      }
+
+      if (reconnectCount > 0) {
+        statusProject.textContent = `⚠️ ${reconnectCount} 个项目需要重新授权本地目录`;
+        if (announce) {
+          appendMessage(
+            'assistant',
+            `⚠️ ${reconnectCount} 个项目缺少有效的本地目录读写授权，服务器修改已保留且未覆盖本地文件。请重新打开对应项目并授权后重试。`
+          );
+        }
+        return;
+      }
+
+      if (conflicts.length > 0) {
+        statusProject.textContent = `⚠️ ${conflicts.length} 个本地文件有冲突，已保留本地内容`;
+        if (announce) {
+          appendMessage(
+            'assistant',
+            `⚠️ 检测到 ${conflicts.length} 个本地冲突，系统没有覆盖这些文件：\n${conflicts.map(path => `  • ${path}`).join('\n')}\n\n服务器修改仍保留，可处理本地冲突后自动重试。`
+          );
+        }
+        return;
+      }
+
+      if (applied.length > 0) {
+        statusProject.textContent = `✅ 已同步到本地 ${applied.length} 个文件`;
+        if (announce) {
+          appendMessage(
+            'assistant',
+            `✅ 已安全同步到本地 ${applied.length} 个文件，并完成写后校验。\n${applied.map(path => `  • ${path}`).join('\n')}`
+          );
+        }
       }
     }
 
-    openPathBtn.addEventListener('click', () => {
-      const path = projectPathInput.value.trim();
-      if (path) {
-        openProject(path);
-        projectPathInput.style.display = 'none';
-        openPathBtn.style.display = 'none';
-        projectPathInput.value = '';
+    async function syncOneBoundProject({
+      userId,
+      projectId,
+      requestPermission,
+      context,
+      announce,
+    }) {
+      const key = projectSyncKey(userId, projectId);
+      const existing = projectSyncInFlight.get(key);
+      if (existing) {
+        const result = await existing.promise;
+        if (
+          requestPermission
+          && !existing.requestPermission
+          && result
+          && result.status === 'reconnect_required'
+        ) {
+          if (projectSyncInFlight.get(key) === existing) {
+            projectSyncInFlight.delete(key);
+          }
+          return await syncOneBoundProject({
+            userId,
+            projectId,
+            requestPermission,
+            context,
+            announce,
+          });
+        }
+        return result;
       }
-    });
-    projectPathInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') openPathBtn.click();
-    });
+
+      const operationPromise = (async () => {
+        if (
+          !window.CodeAgentLocalProject
+          || typeof window.CodeAgentLocalProject.syncProjectChanges !== 'function'
+        ) {
+          return {
+            status: 'failed',
+            projectId,
+            syncRevision: null,
+            applied: [],
+            conflicts: [],
+            failures: [{ relativePath: null, phase: 'availability', message: '本地同步不可用' }],
+          };
+        }
+        try {
+          return await window.CodeAgentLocalProject.syncProjectChanges({
+            userId,
+            projectId,
+            requestPermission,
+            onProgress: event => {
+              if (!announce || !isWorkspaceContextCurrent(context)) return;
+              const message = projectSyncProgressMessage(event);
+              if (message) statusProject.textContent = message;
+            },
+          });
+        } catch (_) {
+          return {
+            status: 'failed',
+            projectId,
+            syncRevision: null,
+            applied: [],
+            conflicts: [],
+            failures: [{ relativePath: null, phase: 'unexpected', message: '本地同步调用失败' }],
+          };
+        }
+      })();
+      const operation = { promise: operationPromise, requestPermission };
+      projectSyncInFlight.set(key, operation);
+      try {
+        return await operationPromise;
+      } finally {
+        if (projectSyncInFlight.get(key) === operation) {
+          projectSyncInFlight.delete(key);
+        }
+      }
+    }
+
+    async function syncBoundProjects({
+      context = captureWorkspaceContext(),
+      userId = currentUserId,
+      projectIds = [...currentProjectIds],
+      requestPermission = false,
+      announce = false,
+      report = true,
+    } = {}) {
+      const normalizedProjectIds = normalizeProjectIds(projectIds).filter(
+        projectId => !projectDeletionInProgress.has(projectSyncKey(userId, projectId))
+      );
+      if (!userId || normalizedProjectIds.length === 0) return [];
+      const results = await Promise.all(normalizedProjectIds.map(projectId => (
+        syncOneBoundProject({
+          userId,
+          projectId,
+          requestPermission,
+          context,
+          announce,
+        })
+      )));
+      if (report && isWorkspaceContextCurrent(context) && currentUserId === userId) {
+        const stillBoundProjectIds = new Set(currentProjectIds);
+        const reportableResults = results.filter(
+          result => result && stillBoundProjectIds.has(result.projectId)
+        );
+        if (reportableResults.length > 0) {
+          reportProjectSyncResults(reportableResults, context, announce);
+        }
+      }
+      return results;
+    }
+
+    function startProjectSyncPolling() {
+      if (projectSyncPollTimer !== null) return;
+      projectSyncPollTimer = setInterval(() => {
+        const context = captureWorkspaceContext();
+        const userId = currentUserId;
+        const projectIds = [...currentProjectIds];
+        if (!userId || projectIds.length === 0) return;
+        void syncBoundProjects({
+          context,
+          userId,
+          projectIds,
+          requestPermission: false,
+          announce: false,
+        });
+      }, PROJECT_SYNC_POLL_INTERVAL_MS);
+    }
+
+    function updateProjectUploadProgress(event) {
+      if (!event) return;
+      if (event.phase === 'scan' && event.status === 'started') {
+        statusProject.textContent = '⏳ 正在扫描本地项目...';
+      } else if (event.phase === 'scan' && event.status === 'completed') {
+        statusProject.textContent = `🔎 扫描完成：${event.acceptedCount} 个文件，${event.totalSize} 字节，排除 ${event.excludedCount} 项`;
+      } else if (event.phase === 'upload') {
+        statusProject.textContent = `⬆️ 上传 ${event.completed}/${event.total}：${event.relativePath}`;
+      } else if (event.phase === 'finish' && event.status === 'started') {
+        statusProject.textContent = '⏳ 正在完成服务器同步...';
+      } else if (event.phase === 'finish' && event.status === 'completed') {
+        statusProject.textContent = `✅ 服务器同步完成：${event.fileCount} 个文件，${event.totalSize} 字节`;
+      }
+    }
+
+    function reportProjectUploadCancellation(result) {
+      if (result.reason === 'permission_denied') {
+        statusProject.textContent = '⚠️ 已取消：未授予本地目录读写权限';
+      } else if (result.reason === 'picker_cancelled') {
+        statusProject.textContent = '● 已取消选择本地目录';
+      } else if (result.reason === 'confirmation_cancelled') {
+        statusProject.textContent = '● 已取消确认，本地项目未上传';
+      } else {
+        statusProject.textContent = `● ${result.message || '已取消打开项目'}`;
+      }
+    }
+
+    function beginUploadOperation() {
+      if (activeUploadOperation !== null) return null;
+      uploadOperationSequence += 1;
+      activeUploadOperation = uploadOperationSequence;
+      openProjectBtn.disabled = true;
+      openProjectBtn.textContent = '⏳ 上传中...';
+      return activeUploadOperation;
+    }
+
+    function isUploadOperationOwner(operationToken) {
+      return operationToken !== null && activeUploadOperation === operationToken;
+    }
+
+    function endUploadOperation(operationToken) {
+      if (!isUploadOperationOwner(operationToken)) return;
+      activeUploadOperation = null;
+      openProjectBtn.disabled = false;
+      openProjectBtn.textContent = '📁 打开项目';
+    }
+
+    async function uploadLocalProject() {
+      // The disabled attribute protects pointer input; the owner guard also protects
+      // keyboard/programmatic duplicate dispatch while the first picker/upload is live.
+      if (activeUploadOperation !== null) return;
+      if (
+        !window.showDirectoryPicker
+        || !window.CodeAgentLocalProject
+        || typeof window.CodeAgentLocalProject.uploadAuthorizedDirectory !== 'function'
+      ) {
+        const message = '当前浏览器不支持本地目录授权，请使用最新版 Chrome 或 Edge。';
+        statusProject.textContent = `⚠️ ${message}`;
+        alert(message);
+        return;
+      }
+      if (!currentUserId || !currentSessionId) {
+        statusProject.textContent = '⚠️ 登录或会话尚未准备完成，请稍后重试';
+        return;
+      }
+
+      const uploadOperation = beginUploadOperation();
+      if (uploadOperation === null) return;
+      const uploadContext = captureWorkspaceContext();
+      const uploadSessionId = uploadContext.sessionId;
+      const uploadUserId = currentUserId;
+      try {
+        const result = await window.CodeAgentLocalProject.uploadAuthorizedDirectory({
+          userId: uploadUserId,
+          sessionId: uploadSessionId,
+          confirmScan: summary => confirm(summary),
+          onProgress: event => {
+            if (isWorkspaceContextCurrent(uploadContext)) {
+              updateProjectUploadProgress(event);
+            }
+          },
+        });
+        if (result.status !== 'opened') {
+          if (isWorkspaceContextCurrent(uploadContext)) {
+            reportProjectUploadCancellation(result);
+          }
+          return;
+        }
+
+        const uploadedSessionProjectIds = normalizeProjectIds([
+          ...loadProjectIdsForSession(uploadSessionId),
+          result.project.id,
+        ]);
+        saveProjectIdsForSession(uploadSessionId, uploadedSessionProjectIds);
+        if (!isWorkspaceContextCurrent(uploadContext)) return;
+
+        currentProjectIds = uploadedSessionProjectIds;
+        currentProjectId = result.project.id;
+        const refreshed = await refreshWorkspaceFromStatus(result.project.id, uploadContext);
+        if (!refreshed || !isWorkspaceContextCurrent(uploadContext)) return;
+        statusProject.textContent = `✅ 上传完成 ${result.scan.acceptedCount}/${result.scan.acceptedCount}：${result.project.name}`;
+      } catch (error) {
+        if (!isWorkspaceContextCurrent(uploadContext)) return;
+        const phase = error.phase ? `，阶段：${error.phase}` : '';
+        const residualProject = error.project && error.project.id
+          ? `；服务器已创建项目 ID ${error.project.id}，但未绑定为当前项目`
+          : '';
+        const message = `打开本地项目失败${phase}：${error.message || '未知错误'}${residualProject}`;
+        statusProject.textContent = `⚠️ ${message}`;
+        alert(message);
+      } finally {
+        endUploadOperation(uploadOperation);
+      }
+    }
+
+    openProjectBtn.addEventListener('click', uploadLocalProject);
 
     function normalizeWorkspacePath(path) {
       return String(path || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
@@ -1678,7 +2368,9 @@
 
     async function closeCurrentProject() {
       if (!currentProjectPath) return;
+      const context = captureWorkspaceContext();
       const projectPath = currentProjectPath;
+      const projectId = currentProjectId;
       const projectTabs = openTabs.filter(
         tab => isPathInsideProject(tab.filepath, projectPath)
       );
@@ -1687,24 +2379,28 @@
       closeProjectBtn.textContent = '关闭中...';
 
       try {
-        const query = new URLSearchParams({
-          session_id: currentSessionId,
-          project_path: projectPath,
-        });
-        const resp = await fetch('/api/workspace/close?' + query.toString(), {
+        const resp = await fetch(
+          `${PROJECTS_API_BASE}/${encodeURIComponent(projectId)}/close`,
+          {
           method: 'POST',
-        });
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: context.sessionId }),
+          }
+        );
         if (!resp.ok) {
-          const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
-          throw new Error(err.error || '关闭失败');
+          const err = await resp.json().catch(() => ({ detail: `HTTP ${resp.status}` }));
+          throw new Error(err.detail || err.error || '关闭失败');
         }
         const data = await resp.json();
-        if (!data.removed_count) throw new Error('后端未找到当前项目，请刷新后重试');
+        if (data.project_id !== projectId) throw new Error('服务器返回的项目不匹配');
 
-        currentWorkspacePaths = currentWorkspacePaths.filter(
-          path => normalizeWorkspacePath(path) !== normalizeWorkspacePath(projectPath)
+        const remainingProjectIds = loadProjectIdsForSession(context.sessionId).filter(
+          storedProjectId => storedProjectId !== projectId
         );
-        saveWorkspacePaths(currentWorkspacePaths);
+        saveProjectIdsForSession(context.sessionId, remainingProjectIds);
+        if (!isWorkspaceContextCurrent(context)) return;
+
+        currentProjectIds = remainingProjectIds;
         for (const tab of [...openTabs]) {
           if (isPathInsideProject(tab.filepath, projectPath)) {
             closeTab(tab, { skipUnsavedCheck: true });
@@ -1712,23 +2408,530 @@
         }
 
         currentProjectPath = null;
-        if (currentWorkspacePaths.length > 0) {
-          await openProject(currentWorkspacePaths[0]);
+        currentProjectId = currentProjectIds[0] || null;
+        if (currentProjectIds.length > 0) {
+          await refreshWorkspaceFromStatus(currentProjectId, context);
         } else {
-          treeContainer.innerHTML = '<div class="tree-empty">点击「打开项目」选择目录</div>';
-          projectNameDisplay.textContent = '';
-          modeLabel.textContent = 'IDE 模式';
-          statusProject.textContent = '● 未打开项目';
+          clearWorkspaceDisplay();
         }
       } catch (e) {
-        alert('关闭项目失败: ' + e.message);
+        if (isWorkspaceContextCurrent(context)) {
+          alert('关闭项目失败: ' + e.message);
+        }
       } finally {
-        closeProjectBtn.textContent = '关闭当前项目';
-        closeProjectBtn.disabled = !currentProjectPath;
+        if (isWorkspaceContextCurrent(context)) {
+          closeProjectBtn.textContent = '关闭当前项目';
+          closeProjectBtn.disabled = !currentProjectPath;
+        }
       }
     }
 
     closeProjectBtn.addEventListener('click', closeCurrentProject);
+
+    // ---- 私有项目管理 ----
+    function captureProjectManagerContext() {
+      return {
+        userId: currentUserId,
+        workspace: captureWorkspaceContext(),
+        requestSequence: projectManagerRequestSequence,
+      };
+    }
+
+    function isManagedWorkspaceContextCurrent(context) {
+      return Boolean(
+        context
+        && currentUserId === context.userId
+        && isWorkspaceContextCurrent(context.workspace)
+      );
+    }
+
+    function isProjectManagerContextCurrent(context) {
+      return Boolean(
+        context
+        && projectManagerOverlay.classList.contains('active')
+        && context.requestSequence === projectManagerRequestSequence
+        && isManagedWorkspaceContextCurrent(context)
+      );
+    }
+
+    function runProjectManagerOperation(projectId, operation) {
+      const existing = projectManagerInFlight.get(projectId);
+      if (existing) return existing;
+      const tracked = Promise.resolve()
+        .then(operation)
+        .finally(() => {
+          if (projectManagerInFlight.get(projectId) === tracked) {
+            projectManagerInFlight.delete(projectId);
+          }
+        });
+      projectManagerInFlight.set(projectId, tracked);
+      return tracked;
+    }
+
+    function setProjectManagerMessage(message) {
+      projectManagerList.textContent = '';
+      const empty = document.createElement('div');
+      empty.className = 'project-manager-empty';
+      empty.textContent = message;
+      projectManagerList.appendChild(empty);
+    }
+
+    function formatProjectUpdatedAt(value) {
+      if (!Number.isFinite(value)) return '更新时间未知';
+      return `更新于 ${new Date(value * 1000).toLocaleString()}`;
+    }
+
+    function setManagedProjectStatus(statusElement, label, state = '') {
+      statusElement.textContent = label;
+      statusElement.className = 'managed-project-status' + (state ? ` ${state}` : '');
+    }
+
+    function createManagedProjectAction(label, className = '') {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'managed-project-action' + (className ? ` ${className}` : '');
+      button.textContent = label;
+      return button;
+    }
+
+    function setManagedProjectCardBusy(card, busy) {
+      for (const button of card.querySelectorAll('.managed-project-action')) {
+        button.disabled = busy || button.dataset.defaultDisabled === 'true';
+      }
+    }
+
+    function bindManagedProjectAction(button, card, project, operation) {
+      button.dataset.defaultDisabled = button.disabled ? 'true' : 'false';
+      button.addEventListener('click', () => {
+        const actionContext = captureProjectManagerContext();
+        void runProjectManagerOperation(project.id, async () => {
+          setManagedProjectCardBusy(card, true);
+          try {
+            await operation();
+          } catch (error) {
+            if (isProjectManagerContextCurrent(actionContext)) {
+              alert(error.message || '项目操作失败');
+            }
+          } finally {
+            if (card.isConnected) setManagedProjectCardBusy(card, false);
+          }
+        });
+      });
+    }
+
+    async function refreshManagedProjectConnection(project, statusElement, card, context) {
+      if (
+        !window.CodeAgentLocalProject
+        || typeof window.CodeAgentLocalProject.getProjectConnectionStatus !== 'function'
+      ) {
+        if (isProjectManagerContextCurrent(context) && card.isConnected) {
+          setManagedProjectStatus(statusElement, '浏览器不支持目录授权', 'warning');
+        }
+        return;
+      }
+      const connection = await window.CodeAgentLocalProject.getProjectConnectionStatus({
+        userId: context.userId,
+        projectId: project.id,
+      });
+      if (!isProjectManagerContextCurrent(context) || !card.isConnected) return;
+      if (project.sync_status !== 'ready') {
+        setManagedProjectStatus(statusElement, '上传未完成', 'warning');
+      } else if (connection.status === 'missing' || connection.status === 'permission_required') {
+        setManagedProjectStatus(statusElement, '需要重新授权', 'warning');
+      } else if (project.id === currentProjectId) {
+        setManagedProjectStatus(statusElement, '当前项目', 'current');
+      } else if (currentProjectIds.includes(project.id)) {
+        setManagedProjectStatus(statusElement, '已绑定', 'connected');
+      } else if (connection.status === 'connected') {
+        setManagedProjectStatus(statusElement, '本地已授权', 'connected');
+      } else {
+        setManagedProjectStatus(statusElement, '授权状态读取失败', 'warning');
+      }
+    }
+
+    function renderManagedProjects(projects = managedProjects, context = captureProjectManagerContext()) {
+      if (!isProjectManagerContextCurrent(context)) return;
+      projectManagerList.textContent = '';
+      if (!projects.length) {
+        setProjectManagerMessage('暂无服务器项目。点击顶部“打开项目”可选择本地目录并创建。');
+        return;
+      }
+
+      for (const project of projects) {
+        const card = document.createElement('article');
+        card.className = 'managed-project-card' + (project.id === currentProjectId ? ' current' : '');
+
+        const main = document.createElement('div');
+        main.className = 'managed-project-main';
+        const nameRow = document.createElement('div');
+        nameRow.className = 'managed-project-name-row';
+        const name = document.createElement('div');
+        name.className = 'managed-project-name';
+        name.textContent = project.name;
+        name.title = project.name;
+        const status = document.createElement('span');
+        if (project.sync_status !== 'ready') {
+          setManagedProjectStatus(status, '上传未完成', 'warning');
+        } else if (project.id === currentProjectId) {
+          setManagedProjectStatus(status, '当前项目', 'current');
+        } else if (currentProjectIds.includes(project.id)) {
+          setManagedProjectStatus(status, '已绑定', 'connected');
+        } else {
+          setManagedProjectStatus(status, '检查本地授权...');
+        }
+        nameRow.appendChild(name);
+        nameRow.appendChild(status);
+
+        const meta = document.createElement('div');
+        meta.className = 'managed-project-meta';
+        const revision = Number.isInteger(project.sync_revision)
+          ? ` · 同步版本 ${project.sync_revision}`
+          : '';
+        meta.textContent = `${formatProjectUpdatedAt(project.updated_at)}${revision}`;
+        main.appendChild(nameRow);
+        main.appendChild(meta);
+
+        const actions = document.createElement('div');
+        actions.className = 'managed-project-actions';
+        const isReady = project.sync_status === 'ready';
+        const isBound = currentProjectIds.includes(project.id);
+
+        if (project.id !== currentProjectId) {
+          const switchButton = createManagedProjectAction(
+            isBound ? '切换' : '在当前会话打开',
+            'primary',
+          );
+          switchButton.disabled = !isReady;
+          bindManagedProjectAction(
+            switchButton,
+            card,
+            project,
+            () => switchManagedProject(project),
+          );
+          actions.appendChild(switchButton);
+        }
+
+        const reconnectButton = createManagedProjectAction('重新连接本地目录');
+        reconnectButton.disabled = !isReady;
+        bindManagedProjectAction(
+          reconnectButton,
+          card,
+          project,
+          () => reconnectManagedProject(project),
+        );
+        actions.appendChild(reconnectButton);
+
+        if (isBound) {
+          const closeButton = createManagedProjectAction('从当前会话关闭');
+          bindManagedProjectAction(
+            closeButton,
+            card,
+            project,
+            () => closeManagedProject(project),
+          );
+          actions.appendChild(closeButton);
+        }
+
+        const deleteButton = createManagedProjectAction('永久删除', 'danger');
+        bindManagedProjectAction(
+          deleteButton,
+          card,
+          project,
+          () => permanentlyDeleteManagedProject(project),
+        );
+        actions.appendChild(deleteButton);
+
+        card.appendChild(main);
+        card.appendChild(actions);
+        projectManagerList.appendChild(card);
+        void refreshManagedProjectConnection(project, status, card, context);
+      }
+    }
+
+    async function loadManagedProjects() {
+      projectManagerRequestSequence += 1;
+      const context = captureProjectManagerContext();
+      setProjectManagerMessage('正在读取你的项目...');
+      projectManagerRefreshBtn.disabled = true;
+      try {
+        const resp = await fetch(PROJECTS_API_BASE);
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ detail: `HTTP ${resp.status}` }));
+          throw new Error(err.detail || err.error || '读取项目列表失败');
+        }
+        const data = await resp.json();
+        if (!isProjectManagerContextCurrent(context)) return;
+        if (!Array.isArray(data)) throw new Error('服务器返回的项目列表无效');
+        managedProjects = data;
+        renderManagedProjects(managedProjects, context);
+      } catch (error) {
+        if (isProjectManagerContextCurrent(context)) {
+          setProjectManagerMessage(`项目列表加载失败：${error.message || '未知错误'}`);
+        }
+      } finally {
+        if (isProjectManagerContextCurrent(context)) {
+          projectManagerRefreshBtn.disabled = false;
+        }
+      }
+    }
+
+    async function openProjectManager() {
+      if (!currentUserId || !currentSessionId) {
+        statusProject.textContent = '⚠️ 登录或会话尚未准备完成，请稍后重试';
+        return;
+      }
+      projectManagerOverlay.classList.add('active');
+      await loadManagedProjects();
+    }
+
+    function closeProjectManager() {
+      projectManagerRequestSequence += 1;
+      projectManagerOverlay.classList.remove('active');
+    }
+
+    async function switchManagedProject(project) {
+      const context = captureProjectManagerContext();
+      if (!isProjectManagerContextCurrent(context)) return;
+      if (project.sync_status !== 'ready') throw new Error('项目上传尚未完成，暂时不能打开');
+
+      let projectIds = loadProjectIdsForSession(context.workspace.sessionId);
+      if (!projectIds.includes(project.id)) {
+        await openProjectForSession(project.id, context.workspace.sessionId);
+        projectIds = normalizeProjectIds([
+          ...loadProjectIdsForSession(context.workspace.sessionId),
+          project.id,
+        ]);
+        saveProjectIdsForSession(context.workspace.sessionId, projectIds);
+      }
+      if (!isManagedWorkspaceContextCurrent(context)) return;
+
+      currentProjectIds = projectIds;
+      currentProjectId = project.id;
+      const refreshed = await refreshWorkspaceFromStatus(project.id, context.workspace);
+      if (!refreshed || !isManagedWorkspaceContextCurrent(context)) return;
+      statusProject.textContent = `● 已切换到项目: ${project.name}`;
+      if (projectManagerOverlay.classList.contains('active')) {
+        await loadManagedProjects();
+      }
+    }
+
+    async function reconnectManagedProject(project) {
+      const context = captureProjectManagerContext();
+      if (!isProjectManagerContextCurrent(context)) return;
+      if (
+        !window.CodeAgentLocalProject
+        || typeof window.CodeAgentLocalProject.reconnectProjectDirectory !== 'function'
+      ) {
+        throw new Error('当前浏览器不支持本地目录重新授权，请使用最新版 Chrome 或 Edge');
+      }
+      const result = await window.CodeAgentLocalProject.reconnectProjectDirectory({
+        userId: context.userId,
+        projectId: project.id,
+        projectName: project.name,
+        confirmNameMismatch: (actualName, expectedName) => confirm(
+          `所选目录名“${actualName}”与项目名“${expectedName}”不同。\n\n确定仍将此目录连接到该项目吗？`
+        ),
+        onProgress: event => {
+          if (!isProjectManagerContextCurrent(context)) return;
+          const message = projectSyncProgressMessage(event);
+          if (message) statusProject.textContent = message;
+        },
+      });
+      if (!isManagedWorkspaceContextCurrent(context)) return;
+
+      if (result.status === 'cancelled') {
+        statusProject.textContent = '● 已取消本地目录重新连接';
+      } else if (result.status === 'reconnect_required') {
+        statusProject.textContent = '⚠️ 未获得本地目录读写授权';
+      } else if (result.status === 'failed') {
+        throw new Error(result.message || '本地目录重新连接失败');
+      } else {
+        reportProjectSyncResults([result], context.workspace, true);
+      }
+      if (projectManagerOverlay.classList.contains('active')) {
+        await loadManagedProjects();
+      }
+    }
+
+    async function currentSessionProjectWorkspace(projectId, context) {
+      const status = await fetchWorkspaceStatus(context.workspace.sessionId);
+      if (!isProjectManagerContextCurrent(context)) return null;
+      const projects = Array.isArray(status.projects) ? status.projects : [];
+      return projects.find(item => item.project_id === projectId) || null;
+    }
+
+    function closeTabsUnderProject(projectPath) {
+      if (!projectPath) return;
+      for (const tab of [...openTabs]) {
+        if (isPathInsideProject(tab.filepath, projectPath)) {
+          closeTab(tab, { skipUnsavedCheck: true });
+        }
+      }
+    }
+
+    async function closeManagedProject(project) {
+      const context = captureProjectManagerContext();
+      if (!isProjectManagerContextCurrent(context)) return;
+      const workspace = await currentSessionProjectWorkspace(project.id, context);
+      if (!isProjectManagerContextCurrent(context)) return;
+      const projectPath = workspace && workspace.path;
+      const projectTabs = projectPath
+        ? openTabs.filter(tab => isPathInsideProject(tab.filepath, projectPath))
+        : [];
+      if (!confirmDiscardUnsavedChanges(projectTabs, `关闭项目 ${project.name}`)) return;
+
+      const resp = await fetch(
+        `${PROJECTS_API_BASE}/${encodeURIComponent(project.id)}/close`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: context.workspace.sessionId }),
+        }
+      );
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: `HTTP ${resp.status}` }));
+        throw new Error(err.detail || err.error || '关闭项目失败');
+      }
+      const data = await resp.json();
+      if (data.project_id !== project.id) throw new Error('服务器返回的项目不匹配');
+
+      const remainingProjectIds = loadProjectIdsForSession(context.workspace.sessionId).filter(
+        projectId => projectId !== project.id
+      );
+      saveProjectIdsForSession(context.workspace.sessionId, remainingProjectIds);
+      if (!isManagedWorkspaceContextCurrent(context)) return;
+
+      currentProjectIds = remainingProjectIds;
+      closeTabsUnderProject(projectPath);
+      if (currentProjectId === project.id) {
+        currentProjectPath = null;
+        currentProjectId = remainingProjectIds[0] || null;
+        if (currentProjectId) {
+          await refreshWorkspaceFromStatus(currentProjectId, context.workspace);
+        } else {
+          clearWorkspaceDisplay();
+        }
+      }
+      if (!isManagedWorkspaceContextCurrent(context)) return;
+      statusProject.textContent = `● 已从当前会话关闭项目: ${project.name}`;
+      if (projectManagerOverlay.classList.contains('active')) {
+        await loadManagedProjects();
+      }
+    }
+
+    async function permanentlyDeleteManagedProject(project) {
+      const context = captureProjectManagerContext();
+      if (!isProjectManagerContextCurrent(context)) return;
+      if (!confirm(
+        `永久删除服务器副本“${project.name}”？\n\n服务器上的项目、待确认修改和撤销记录会被永久删除；你电脑上的本地目录会保留。`
+      )) return;
+      const confirmationName = prompt(
+        `请输入项目名称“${project.name}”以确认永久删除服务器副本：`
+      );
+      if (confirmationName === null) return;
+      if (confirmationName !== project.name) {
+        alert('项目名称不匹配，未执行删除。');
+        return;
+      }
+
+      const workspace = await currentSessionProjectWorkspace(project.id, context);
+      if (!isProjectManagerContextCurrent(context)) return;
+      const projectPath = workspace && workspace.path;
+      const projectTabs = projectPath
+        ? openTabs.filter(tab => isPathInsideProject(tab.filepath, projectPath))
+        : [];
+      if (!confirmDiscardUnsavedChanges(projectTabs, `永久删除项目 ${project.name}`)) return;
+
+      const syncKey = projectSyncKey(context.userId, project.id);
+      projectDeletionInProgress.add(syncKey);
+      try {
+        const activeSync = projectSyncInFlight.get(syncKey);
+        if (activeSync) await activeSync.promise.catch(() => null);
+        const resp = await fetch(
+          `${PROJECTS_API_BASE}/${encodeURIComponent(project.id)}`,
+          {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ confirmation_name: project.name }),
+          }
+        );
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({ detail: `HTTP ${resp.status}` }));
+          throw new Error(err.detail || err.error || '永久删除项目失败');
+        }
+        const data = await resp.json();
+        if (
+          data.project_id !== project.id
+          || !['deleted', 'deletion_pending_cleanup'].includes(data.status)
+        ) {
+          throw new Error('服务器返回的删除结果无效');
+        }
+        const serverRetentionWarning = data.local_files_deleted !== false;
+
+        removeProjectIdFromAllSessions(project.id);
+        let handleCleanupFailed = false;
+        try {
+          if (
+            window.CodeAgentLocalProject
+            && typeof window.CodeAgentLocalProject.deleteDirectoryHandle === 'function'
+          ) {
+            const handleResult = await window.CodeAgentLocalProject.deleteDirectoryHandle(
+              context.userId,
+              project.id,
+            );
+            handleCleanupFailed = handleResult.status === 'failed';
+          }
+        } catch (_) {
+          handleCleanupFailed = true;
+        }
+
+        if (currentUserId !== context.userId) return;
+        const liveWorkspaceContext = captureWorkspaceContext();
+        currentProjectIds = loadProjectIdsForSession(liveWorkspaceContext.sessionId);
+        closeTabsUnderProject(projectPath);
+        if (currentProjectId === project.id) {
+          currentProjectPath = null;
+          currentProjectId = currentProjectIds[0] || null;
+          if (currentProjectId) {
+            await refreshWorkspaceFromStatus(currentProjectId, liveWorkspaceContext);
+          } else {
+            clearWorkspaceDisplay();
+          }
+        }
+        if (
+          currentUserId !== context.userId
+          || !isWorkspaceContextCurrent(liveWorkspaceContext)
+        ) return;
+
+        const cleanupWarning = handleCleanupFailed
+          ? '；浏览器授权记录清理失败，但服务器副本已删除，本地目录仍保留'
+          : '';
+        const retentionWarning = serverRetentionWarning
+          ? '；服务器未返回本地目录保留确认，请勿手动删除本地目录'
+          : '';
+        const deferred = data.status === 'deletion_pending_cleanup'
+          ? '（服务器文件正在后台清理）'
+          : '';
+        statusProject.textContent = `🗑️ 已永久删除服务器副本: ${project.name}${deferred}${cleanupWarning}${retentionWarning}`;
+        if (projectManagerOverlay.classList.contains('active')) {
+          await loadManagedProjects();
+        }
+      } finally {
+        projectDeletionInProgress.delete(syncKey);
+      }
+    }
+
+    manageProjectsBtn.addEventListener('click', openProjectManager);
+    projectManagerRefreshBtn.addEventListener('click', loadManagedProjects);
+    projectManagerCloseBtn.addEventListener('click', closeProjectManager);
+    projectManagerOverlay.addEventListener('click', event => {
+      if (event.target === projectManagerOverlay) closeProjectManager();
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && projectManagerOverlay.classList.contains('active')) {
+        closeProjectManager();
+      }
+    });
 
     // ---- 编辑器标签页 + 文件读取/保存 ----
     async function openFile(filepath, filename) {
@@ -1781,7 +2984,14 @@
       for (const tab of openTabs) {
         const el = document.createElement('div');
         el.className = 'editor-tab' + (tab === activeTab ? ' active' : '');
-        el.innerHTML = `<span>${tab.name}</span><span class="close-btn" data-path="${tab.filepath}">×</span>`;
+        const name = document.createElement('span');
+        name.textContent = tab.name;
+        const close = document.createElement('span');
+        close.className = 'close-btn';
+        close.dataset.path = tab.filepath;
+        close.textContent = '×';
+        el.appendChild(name);
+        el.appendChild(close);
         el.addEventListener('click', (e) => {
           if (e.target.classList.contains('close-btn')) {
             closeTab(tab);
@@ -1857,9 +3067,9 @@
 
     let undoHistoryRequestId = 0;
 
-    async function getFileHistory(tab) {
+    async function getFileHistory(tab, sessionId = currentSessionId) {
       const query = new URLSearchParams({
-        session_id: currentSessionId,
+        session_id: sessionId,
         filepath: tab.filepath,
       });
       const resp = await fetch('/api/code/history?' + query.toString());
@@ -1871,7 +3081,8 @@
       return Array.isArray(data) ? data : [];
     }
 
-    async function refreshUndoButton() {
+    async function refreshUndoButton(context = captureWorkspaceContext()) {
+      if (!isWorkspaceContextCurrent(context)) return;
       const tab = activeTab;
       const requestId = ++undoHistoryRequestId;
       undoCurrentBtn.disabled = true;
@@ -1880,8 +3091,12 @@
       if (!tab) return;
 
       try {
-        const history = await getFileHistory(tab);
-        if (requestId !== undoHistoryRequestId || activeTab !== tab) return;
+        const history = await getFileHistory(tab, context.sessionId);
+        if (
+          !isWorkspaceContextCurrent(context)
+          || requestId !== undoHistoryRequestId
+          || activeTab !== tab
+        ) return;
         undoCurrentBtn.disabled = history.length === 0;
         undoCurrentBtn.textContent = history.length > 0
           ? `↶ 撤销修改 (${history.length})`
@@ -1890,7 +3105,11 @@
           ? `撤销 ${tab.name} 最近一次修改（共 ${history.length} 次可撤销）`
           : `${tab.name} 没有可撤销的修改`;
       } catch (e) {
-        if (requestId !== undoHistoryRequestId || activeTab !== tab) return;
+        if (
+          !isWorkspaceContextCurrent(context)
+          || requestId !== undoHistoryRequestId
+          || activeTab !== tab
+        ) return;
         undoCurrentBtn.disabled = true;
         undoCurrentBtn.title = `无法获取修改历史：${e.message}`;
       }
@@ -2319,6 +3538,31 @@
       return parts[parts.length - 1] || filepath;
     }
 
+    function getProjectRelativePath(filepath) {
+      const filePath = String(filepath || '').replace(/\\/g, '/');
+      const projectPath = String(currentProjectPath || '')
+        .replace(/\\/g, '/')
+        .replace(/\/+$/, '');
+      if (projectPath) {
+        const lowerFilePath = filePath.toLowerCase();
+        const lowerProjectPath = projectPath.toLowerCase();
+        if (lowerFilePath.startsWith(lowerProjectPath + '/')) {
+          const relativePath = filePath.slice(projectPath.length + 1);
+          if (relativePath) return relativePath;
+        }
+      }
+      const looksAbsolute = filePath.startsWith('/') || /^[A-Za-z]:\//.test(filePath);
+      const components = filePath.split('/');
+      if (
+        !looksAbsolute
+        && components.length > 0
+        && components.every(component => component && component !== '.' && component !== '..')
+      ) {
+        return filePath;
+      }
+      return getFilename(filePath);
+    }
+
     function updatePendingPreviewButton(count, errorMessage = '') {
       const normalizedCount = Math.max(0, Number(count) || 0);
       pendingPreviewCount.textContent = normalizedCount;
@@ -2334,13 +3578,17 @@
     }
 
     // 获取当前会话的待确认修改，并按需打开预览
-    async function loadPendingModifications({ showPreview = false } = {}) {
+    async function loadPendingModifications({
+      showPreview = false,
+      context = captureWorkspaceContext(),
+    } = {}) {
       try {
         const resp = await fetch(
-          `/api/code/pending?session_id=${encodeURIComponent(currentSessionId)}`
+          `/api/code/pending?session_id=${encodeURIComponent(context.sessionId)}`
         );
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
+        if (!isWorkspaceContextCurrent(context)) return [];
         pendingDiffData = Array.isArray(data.pending) ? data.pending : [];
         updatePendingPreviewButton(pendingDiffData.length);
         if (showPreview && pendingDiffData.length > 0) {
@@ -2348,6 +3596,7 @@
         }
         return pendingDiffData;
       } catch (e) {
+        if (!isWorkspaceContextCurrent(context)) return [];
         pendingDiffData = [];
         updatePendingPreviewButton(0, e.message || '未知错误');
         return [];
@@ -2355,8 +3604,8 @@
     }
 
     // 聊天响应后检查是否有待确认修改，并保留原有自动弹窗行为
-    async function checkPendingModifications() {
-      return loadPendingModifications({ showPreview: true });
+    async function checkPendingModifications(context = captureWorkspaceContext()) {
+      return loadPendingModifications({ showPreview: true, context });
     }
 
     pendingPreviewBtn.addEventListener('click', async () => {
@@ -2408,12 +3657,18 @@
       pendingDiffData.forEach((mod, idx) => {
         const tab = document.createElement('div');
         tab.className = 'diff-file-tab' + (idx === activeDiffIdx ? ' active' : '');
-        const filename = getFilename(mod.filepath);
+        const displayPath = getProjectRelativePath(mod.filepath);
         const actionLabel = mod.action === 'write_file'
           ? (mod.is_new ? '新建' : '覆写')
           : '修改';
-        tab.innerHTML = `<span>${filename}</span><span class="action-tag">${actionLabel}</span>`;
-        tab.title = mod.filepath;
+        const name = document.createElement('span');
+        name.textContent = displayPath;
+        const action = document.createElement('span');
+        action.className = 'action-tag';
+        action.textContent = actionLabel;
+        tab.appendChild(name);
+        tab.appendChild(action);
+        tab.title = displayPath;
         tab.addEventListener('click', () => switchDiffTab(idx));
         diffFileTabs.appendChild(tab);
       });
@@ -2442,6 +3697,7 @@
 
       const mod = pendingDiffData[idx];
       const filename = getFilename(mod.filepath);
+      const displayPath = getProjectRelativePath(mod.filepath);
       const lang = getLanguage(filename);
       const oldContent = mod.old_content || '';
       const newContent = mod.new_content || '';
@@ -2459,18 +3715,28 @@
       const actionText = mod.action === 'write_file'
         ? (mod.is_new ? '新建文件' : '全量覆写')
         : '局部修改';
-      diffHint.textContent = `文件: ${filename}（${actionText}）| 修改前 ${oldContent.split('\n').length} 行 → 修改后 ${newContent.split('\n').length} 行`;
+      diffHint.textContent = `文件: ${displayPath}（${actionText}）| 修改前 ${oldContent.split('\n').length} 行 → 修改后 ${newContent.split('\n').length} 行`;
     }
 
     // 确认修改：调 /api/code/confirm，刷新编辑器
+    let diffConfirmationSequence = 0;
     diffConfirmBtn.addEventListener('click', async () => {
+      diffConfirmationSequence += 1;
+      const confirmationToken = diffConfirmationSequence;
       diffConfirmBtn.disabled = true;
       diffCancelBtn.disabled = true;
       diffConfirmBtn.textContent = '应用中...';
+      const confirmSyncContext = captureWorkspaceContext();
+      const confirmSyncUserId = currentUserId;
+      const confirmSyncProjectIds = [...currentProjectIds];
+      const isConfirmContextCurrent = () => (
+        currentUserId === confirmSyncUserId
+        && isWorkspaceContextCurrent(confirmSyncContext)
+      );
 
       try {
         const resp = await fetch(
-          `/api/code/confirm?session_id=${encodeURIComponent(currentSessionId)}`,
+          `/api/code/confirm?session_id=${encodeURIComponent(confirmSyncContext.sessionId)}`,
           { method: 'POST' }
         );
         if (!resp.ok) {
@@ -2478,43 +3744,87 @@
           throw new Error(err.error || '确认失败');
         }
         const data = await resp.json();
+        const localSyncPromise = data.confirmed_count > 0 && confirmSyncProjectIds.length > 0
+          ? syncBoundProjects({
+            context: confirmSyncContext,
+            userId: confirmSyncUserId,
+            projectIds: confirmSyncProjectIds,
+            requestPermission: true,
+            announce: false,
+            report: false,
+          })
+          : Promise.resolve([]);
+        if (!isConfirmContextCurrent()) {
+          await localSyncPromise;
+          return;
+        }
 
         // 关闭模态框
         closeDiffPreview();
 
         // 刷新被修改的文件标签
         const modifiedFiles = (data.results || []).filter(r => r.status === 'applied');
-        await refreshModifiedFilesAfterConfirm(modifiedFiles);
-        await refreshUndoButton();
+        await refreshModifiedFilesAfterConfirm(modifiedFiles, { context: confirmSyncContext });
+        if (!isConfirmContextCurrent()) {
+          await localSyncPromise;
+          return;
+        }
+        await refreshUndoButton(confirmSyncContext);
+        if (!isConfirmContextCurrent()) {
+          await localSyncPromise;
+          return;
+        }
 
         // 部分失败或文件冲突：未应用的修改保留在待确认列表（服务端）
         const failedFiles = (data.results || []).filter(
           r => r.status === 'error' || r.status === 'conflict'
         );
         const conflictFiles = failedFiles.filter(r => r.status === 'conflict');
-        await loadPendingModifications({ showPreview: false });
+        await loadPendingModifications({
+          showPreview: false,
+          context: confirmSyncContext,
+        });
+        if (!isConfirmContextCurrent()) {
+          await localSyncPromise;
+          return;
+        }
         if (failedFiles.length > 0) {
           if (conflictFiles.length > 0) {
             statusProject.textContent = `⚠️ ${data.confirmed_count} 个已应用，${conflictFiles.length} 个冲突`;
             appendMessage('assistant', `⚠️ ${conflictFiles.length} 个修改未应用：文件在预览后已发生变化。\n\n冲突文件：\n${conflictFiles.map(r => `  • ${getFilename(r.filepath)}`).join('\n')}\n\n为避免覆盖磁盘上的新内容，系统已停止应用这些修改。请取消旧修改并重新生成预览后再确认。`);
           } else {
             statusProject.textContent = `⚠️ ${data.confirmed_count} 个已应用，${failedFiles.length} 个失败`;
-            appendMessage('assistant', `⚠️ 部分修改未应用（${data.confirmed_count} 个成功，${failedFiles.length} 个失败）。\n\n失败文件：\n${failedFiles.map(r => `  • ${getFilename(r.filepath)}`).join('\n')}\n\n失败原因：${failedFiles[0].error || '未知'}\n\n失败的修改仍保留在待确认列表，处理后（如重新打开项目）发送任意消息即可重新预览并确认。`);
+            appendMessage('assistant', `⚠️ 部分修改未应用（${data.confirmed_count} 个成功，${failedFiles.length} 个失败）。\n\n失败文件：\n${failedFiles.map(r => `  • ${getFilename(r.filepath)}`).join('\n')}\n\n失败原因：服务器应用修改失败\n\n失败的修改仍保留在待确认列表，处理后（如重新打开项目）发送任意消息即可重新预览并确认。`);
           }
         } else {
           // 提示成功
           statusProject.textContent = `✅ 已确认 ${data.confirmed_count} 个修改`;
           appendMessage('assistant', `✅ 已应用 ${data.confirmed_count} 个修改。\n${modifiedFiles.map(r => `  • ${getFilename(r.filepath)}`).join('\n')}\n\n如需撤销，可使用撤销功能恢复到修改前。`);
         }
-        setTimeout(() => {
-          statusProject.textContent = `● 工作区: ${projectNameDisplay.textContent}`;
-        }, 4000);
+
+        const localSyncResults = await localSyncPromise;
+        if (!isConfirmContextCurrent()) return;
+        reportProjectSyncResults(localSyncResults, confirmSyncContext, true);
+        const localSyncNeedsAttention = localSyncResults.some(
+          result => result && result.status !== 'synced'
+        );
+        if (!localSyncNeedsAttention) {
+          setTimeout(() => {
+            if (isWorkspaceContextCurrent(confirmSyncContext)) {
+              statusProject.textContent = `● 工作区: ${projectNameDisplay.textContent}`;
+            }
+          }, 4000);
+        }
       } catch (e) {
-        alert('确认修改失败: ' + e.message);
+        if (isConfirmContextCurrent()) {
+          alert('确认修改失败: ' + e.message);
+        }
       } finally {
-        diffConfirmBtn.disabled = false;
-        diffCancelBtn.disabled = false;
-        diffConfirmBtn.textContent = '✓ 确认修改';
+        if (confirmationToken === diffConfirmationSequence) {
+          diffConfirmBtn.disabled = false;
+          diffCancelBtn.disabled = false;
+          diffConfirmBtn.textContent = '✓ 确认修改';
+        }
       }
     });
 
@@ -2576,18 +3886,23 @@
     }
 
     // 确认后刷新被修改的文件
-    async function refreshModifiedFilesAfterConfirm(modifiedFiles, { overwriteDirty = false } = {}) {
+    async function refreshModifiedFilesAfterConfirm(
+      modifiedFiles,
+      { overwriteDirty = false, context = captureWorkspaceContext() } = {},
+    ) {
       for (const result of modifiedFiles) {
+        if (!isWorkspaceContextCurrent(context)) return;
         const filepath = result.filepath;
         // 如果文件已在编辑器中打开，刷新内容
         const tab = openTabs.find(t => t.filepath === filepath);
         if (tab) {
           try {
             const resp = await fetch(
-              `/api/workspace/file?session_id=${encodeURIComponent(currentSessionId)}&filepath=${encodeURIComponent(filepath)}`
+              `/api/workspace/file?session_id=${encodeURIComponent(context.sessionId)}&filepath=${encodeURIComponent(filepath)}`
             );
-            if (resp.ok) {
+            if (resp.ok && isWorkspaceContextCurrent(context)) {
               const fileData = await resp.json();
+              if (!isWorkspaceContextCurrent(context)) return;
               if (!overwriteDirty && hasUnsavedChanges(tab)) {
                 reportEditorDiskConflict(tab);
                 continue;
@@ -2637,8 +3952,8 @@
     }
 
     // 页面刷新后恢复 localStorage 所指向的当前会话消息。
-    async function restoreCurrentSessionHistory() {
-      const sessionId = currentSessionId;
+    async function restoreCurrentSessionHistory(context = captureWorkspaceContext()) {
+      const sessionId = context.sessionId;
       questionInput.disabled = true;
       submitBtn.disabled = true;
       try {
@@ -2647,7 +3962,7 @@
         );
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
-        if (sessionId !== currentSessionId) return;
+        if (sessionId !== currentSessionId || !isWorkspaceContextCurrent(context)) return;
 
         const messages = Array.isArray(data.messages) ? data.messages : [];
         if (messages.length === 0) return;
@@ -2660,11 +3975,11 @@
           );
         }
       } catch (e) {
-        if (sessionId === currentSessionId) {
+        if (isWorkspaceContextCurrent(context)) {
           appendMessage('assistant', `⚠️ 当前会话记录加载失败：${e.message}`);
         }
       } finally {
-        if (sessionId === currentSessionId) {
+        if (isWorkspaceContextCurrent(context)) {
           questionInput.disabled = false;
           submitBtn.disabled = false;
           questionInput.focus();
@@ -2743,6 +4058,7 @@
       try {
         const resp = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        removeProjectIdsForSession(sessionId);
         cardEl.remove();
         const remaining = sessionsList.querySelectorAll('.session-card').length;
         sessionsCount.textContent = `${remaining} 个`;
@@ -2765,18 +4081,20 @@
     }
 
     async function switchToSession(sessionId) {
-      const projectPaths = [...currentWorkspacePaths];
+      const navigationToken = beginSessionNavigation();
+      let context = null;
       questionInput.disabled = true;
       submitBtn.disabled = true;
       try {
         const resp = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/messages`);
+        if (!isSessionNavigationCurrent(navigationToken)) return;
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
+        if (!isSessionNavigationCurrent(navigationToken)) return;
 
         // 切换当前会话（后续对话沿用该会话历史）；代际+1 使旧会话的轮询任务静默终止
-        currentSessionId = sessionId;
-        chatEpoch++;
-        localStorage.setItem('rag_session_id', sessionId);
+        context = activateSessionContext(sessionId);
+        localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
         sessionInfo.textContent = `会话：${sessionId}`;
 
         // 渲染历史消息
@@ -2789,22 +4107,43 @@
           }
         }
 
-        const failed = await rebindProjectsToSession(projectPaths, sessionId);
+        const projectIds = loadProjectIdsForSession(sessionId);
+        const { failed } = await rebindProjectsToSession(projectIds, sessionId);
+        const reconciliation = reconcileProjectRebindSnapshot(sessionId, projectIds, failed);
+        if (reconciliation.snapshotChanged || !isWorkspaceContextCurrent(context)) return;
+
+        currentProjectIds = reconciliation.projectIds;
+        currentProjectId = currentProjectIds[0] || null;
+        if (currentProjectIds.length > 0) {
+          await refreshWorkspaceFromStatus(currentProjectId, context);
+        } else {
+          clearWorkspaceDisplay();
+        }
+        if (!isWorkspaceContextCurrent(context)) return;
         await refreshUndoButton();
+        if (!isWorkspaceContextCurrent(context)) return;
         if (failed.length > 0) {
           statusProject.textContent = `⚠️ ${failed.length} 个项目重新绑定失败`;
-          appendMessage('assistant', `⚠️ 已切换历史会话，但以下项目重新绑定失败：\n${failed.map(item => `  • ${item.projectPath}: ${item.error}`).join('\n')}\n\n请重新打开这些项目后再继续。`);
+          appendMessage('assistant', `⚠️ 已切换历史会话，但以下项目重新绑定失败：\n${failed.map(item => `  • 项目 ${item.projectId}: ${item.error}`).join('\n')}\n\n请重新选择本地目录后再继续。`);
         }
         closeSessionsPanel();
         // 切回会话时检查待确认修改（任务在用户离开期间完成时，其 diff 会在此弹出）
-        await checkPendingModifications();
+        await checkPendingModifications(context);
+        if (!isWorkspaceContextCurrent(context)) return;
         questionInput.focus();
       } catch (e) {
-        alert('加载会话失败: ' + e.message);
+        if (isSessionNavigationCurrent(navigationToken)) {
+          alert('加载会话失败: ' + e.message);
+        }
       } finally {
-        questionInput.disabled = false;
-        submitBtn.disabled = false;
-        questionInput.focus();
+        if (
+          isSessionNavigationCurrent(navigationToken)
+          && (!context || isWorkspaceContextCurrent(context))
+        ) {
+          questionInput.disabled = false;
+          submitBtn.disabled = false;
+          questionInput.focus();
+        }
       }
     }
 
@@ -2820,21 +4159,39 @@
     });
 
     // ---- 页面加载时检查健康状态 ----
-    async function initializeCurrentSession() {
-      await restoreCurrentSessionHistory();
-      await restoreWorkspacePaths();
-      await loadPendingModifications({ showPreview: true });
+    async function initializeCurrentSession(context = captureWorkspaceContext()) {
+      await restoreCurrentSessionHistory(context);
+      if (!isWorkspaceContextCurrent(context)) return;
+      await restoreProjectIds(context);
+      if (!isWorkspaceContextCurrent(context)) return;
+      await loadPendingModifications({ showPreview: true, context });
     }
-    initializeCurrentSession();
-
-    fetch('/api/health')
-      .then(r => r.json())
-      .then(data => {
+    async function initializeAuthenticatedApplication() {
+      const navigationToken = beginSessionNavigation();
+      const authState = await window.CodeAgentAuth.ready;
+      if (!authState || !isSessionNavigationCurrent(navigationToken)) return;
+      currentUserId = authState.user.id;
+      configureUserStorage(authState.user.id);
+      startProjectSyncPolling();
+      const sessionId = await getSessionId();
+      if (!isSessionNavigationCurrent(navigationToken)) return;
+      const context = activateSessionContext(sessionId);
+      sessionInfo.textContent = `会话：${sessionId}`;
+      await initializeCurrentSession(context);
+      if (!isWorkspaceContextCurrent(context)) return;
+      try {
+        const response = await fetch('/api/health');
+        if (!isWorkspaceContextCurrent(context)) return;
+        const data = await response.json();
+        if (!isWorkspaceContextCurrent(context)) return;
         if (!modeLabel.textContent.includes('项目')) {
           modeLabel.textContent = `模式: ${data.mode}`;
         }
-      })
-      .catch(() => {});
+      } catch (_) {
+        // 健康状态仅用于展示，认证成功后即使读取失败也不阻塞主界面。
+      }
+    }
+    initializeAuthenticatedApplication();
 
     // ---- 欢迎屏快捷方式（仅新增绑定，不影响既有逻辑） ----
     (function () {

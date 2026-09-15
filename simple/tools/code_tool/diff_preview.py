@@ -13,6 +13,7 @@
 #   → 用户点"撤销" → cancel_modifications 清空暂存，让用户重新描述需求
 
 import difflib
+from pathlib import Path
 
 from core.session_lifecycle import begin_request, run_if_current
 from tools.code_tool.atomic_write import atomic_write_text
@@ -294,3 +295,27 @@ def cancel_modifications(session_id: str = None) -> dict:
     if count > 0:
         del _PENDING_MODIFICATIONS[sid]
     return {"status": "cancelled", "cancelled_count": count}
+
+
+def cancel_modifications_under_path(
+    session_ids: list[str] | tuple[str, ...],
+    project_path: str,
+) -> int:
+    """Discard pending modifications inside one deleted server project."""
+    project = Path(project_path).resolve()
+    cancelled = 0
+    for session_id in dict.fromkeys(session_ids):
+        pending = _PENDING_MODIFICATIONS.get(session_id, [])
+        remaining = []
+        for modification in pending:
+            try:
+                Path(modification["filepath"]).resolve().relative_to(project)
+            except (KeyError, OSError, TypeError, ValueError):
+                remaining.append(modification)
+            else:
+                cancelled += 1
+        if remaining:
+            _PENDING_MODIFICATIONS[session_id] = remaining
+        else:
+            _PENDING_MODIFICATIONS.pop(session_id, None)
+    return cancelled

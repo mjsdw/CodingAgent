@@ -43,6 +43,13 @@ from core.session_lifecycle import (
     SessionDeletingError, begin_delete, begin_request, end_delete,
     require_current, run_if_current,
 )
+from core.auth_routes import (
+    router as auth_router,
+    resolve_auth_session,
+    ensure_session_ownership,
+)
+from core.auth_security import CSRF_HEADER_NAME
+from core.auth_store import get_auth_store
 from tools.code_tool import (
     undo_last, get_history,
     add_session_workspace, add_session_open_file,
@@ -62,6 +69,9 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# 挂载认证路由（/api/auth/login、/register、/logout、/me）
+app.include_router(auth_router)
+
 
 @app.exception_handler(InvalidSessionIdError)
 async def invalid_session_id_handler(request: Request, exc: InvalidSessionIdError):
@@ -78,6 +88,68 @@ async def session_deleting_handler(request: Request, exc: SessionDeletingError):
 STATIC_DIR = Path(__file__).parent / "static"
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
+# ===================== 认证与 CSRF 全局中间件 =====================
+
+# 无需登录即可访问的 API 路径（登录/注册自身 + 健康检查）
+_AUTH_EXEMPT_PATHS = {
+    "/api/auth/login",
+    "/api/auth/register",
+    "/api/health",
+}
+
+# 变更类 HTTP 方法（触发 CSRF 校验）
+_MUTATION_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+@app.middleware("http")
+async def auth_and_csrf_middleware(request: Request, call_next):
+    """统一认证与 CSRF 防护（业务端点零改动）。
+
+    规则：
+      1. 非 /api/* 请求（页面、静态资源）直接放行
+      2. /api/auth/login、/api/auth/register、/api/health 放行（登录前无会话）
+      3. 其余 /api/* 必须携带有效登录 Cookie，否则 401（前端自动跳 /login）
+      4. 变更请求（POST/PUT/PATCH/DELETE）额外校验 X-CSRF-Token 头
+         与服务端会话中的 csrf_token 一致，否则 403（防跨站伪造）
+      5. 认证结果挂到 request.state.auth_session，供业务端点做归属校验
+    """
+    path = request.url.path
+
+    if not path.startswith("/api/"):
+        return await call_next(request)
+
+    if path in _AUTH_EXEMPT_PATHS:
+        return await call_next(request)
+
+    # --- 认证：解析 Cookie → 查会话（SQLite 同步调用放线程池） ---
+    auth_session = await run_in_threadpool(resolve_auth_session, request)
+    if auth_session is None:
+        return JSONResponse({"error": "未登录或会话已过期"}, status_code=401)
+    request.state.auth_session = auth_session
+
+    # --- CSRF：变更请求校验自定义头 ---
+    if request.method in _MUTATION_METHODS:
+        provided = request.headers.get(CSRF_HEADER_NAME, "")
+        if not provided or provided != auth_session.csrf_token:
+            return JSONResponse(
+                {"error": "CSRF 校验失败：缺少或错误的 X-CSRF-Token 头"},
+                status_code=403,
+            )
+
+    return await call_next(request)
+
+
+# ===================== 路由 =====================
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page():
+    """登录/注册页面（static/login.html）。"""
+    login_file = STATIC_DIR / "login.html"
+    if not login_file.exists():
+        return HTMLResponse("<h1>static/login.html 不存在</h1>", status_code=404)
+    return HTMLResponse(login_file.read_text(encoding="utf-8"))
 
 
 # ===================== 请求/响应模型 =====================
@@ -286,7 +358,14 @@ def _delete_session_uploads(session_id: str) -> int:
     return _delete_session_data_directory(UPLOAD_DIR, session_id)
 
 
-# ===================== 路由 =====================
+async def _require_session_ownership(request: Request, session_id: str) -> None:
+    """业务端点归属校验入口：首次访问声明归属，他人会话返回 403。
+
+    由 auth_and_csrf_middleware 保证 request.state.auth_session 一定存在
+    （未认证请求已在中间件层被 401 拦截）。
+    """
+    await ensure_session_ownership(request.state.auth_session, session_id)
+
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
@@ -307,7 +386,7 @@ async def health():
 
 
 @app.post("/api/chat")
-async def chat(req: ChatRequest):
+async def chat(req: ChatRequest, request: Request):
     """问答主接口：按 Skill 类型自动选择同步或异步模式。
 
     同步模式（闲聊/天气/知识库/拦截）：直接返回 answer + sources。
@@ -325,6 +404,8 @@ async def chat(req: ChatRequest):
     import uuid
     session_id = req.session_id or f"web-{uuid.uuid4().hex[:8]}"
     validate_session_id(session_id)
+    # 会话归属校验：首次访问声明归属，他人会话 403
+    await _require_session_ownership(request, session_id)
     session_generation = begin_request(session_id)
 
     # ---- 路由预判：判断是否需要后台任务（仅 CodeGen 需要）----
@@ -396,23 +477,36 @@ async def chat(req: ChatRequest):
 # ===================== 历史会话管理 =====================
 
 @app.get("/api/sessions")
-async def list_sessions():
-    """列出所有历史会话（按最近活跃时间倒序）。
+async def list_sessions(request: Request):
+    """列出当前登录用户的历史会话（按最近活跃时间倒序）。
 
     返回：{sessions: [{session_id, message_count, created_at, last_active_at, preview}], count}
     """
     store = get_memory_store()
     sessions = store.list_sessions()
-    return {"sessions": sessions, "count": len(sessions)}
+    # 只返回属于当前用户的会话（chat_sessions 归属表过滤）
+    owned_ids = set(
+        await run_in_threadpool(
+            get_auth_store().list_user_chat_session_ids,
+            request.state.auth_session.user.id,
+        )
+    )
+    my_sessions = [s for s in sessions if s["session_id"] in owned_ids]
+    return {"sessions": my_sessions, "count": len(my_sessions)}
 
 
 @app.get("/api/sessions/{session_id}/messages")
-async def session_messages(session_id: str, limit: int = Query(default=500, ge=1, le=5000)):
+async def session_messages(
+    session_id: str,
+    request: Request,
+    limit: int = Query(default=500, ge=1, le=5000),
+):
     """查询指定会话的历史消息（时间正序）。
 
     返回：{session_id, count, messages: [{role, content, timestamp}]}
     """
     validate_session_id(session_id)
+    await _require_session_ownership(request, session_id)
     session_generation = begin_request(session_id)
     store = get_memory_store()
     history = store.get_history(session_id, limit=limit)
@@ -421,9 +515,10 @@ async def session_messages(session_id: str, limit: int = Query(default=500, ge=1
 
 
 @app.delete("/api/sessions/{session_id}")
-async def delete_session(session_id: str):
+async def delete_session(session_id: str, request: Request):
     """删除会话历史，并清理任务、工作区、待确认修改和上传文件。"""
     validate_session_id(session_id)
+    await _require_session_ownership(request, session_id)
     from core.task_manager import cancel_tasks_for_session, get_task_ids_for_session
     from skills.code_gen import delete_code_checkpoints
 
@@ -490,7 +585,7 @@ async def delete_session(session_id: str):
 
 
 @app.get("/api/task/{task_id}/status")
-async def task_status(task_id: str):
+async def task_status(task_id: str, request: Request):
     """查询任务状态（前端轮询用）。
 
     返回：{task_id, state, step_info, step_progress, answer, error, session_id}
@@ -505,6 +600,7 @@ async def task_status(task_id: str):
             {"error": f"任务不存在: {task_id}"},
             status_code=404,
         )
+    await _require_session_ownership(request, tc.session_id)
     status = tc.to_status_dict()
     # 若已完成，附加 sources
     if status["state"] == "done" and tc.sources:
@@ -524,7 +620,7 @@ async def task_status(task_id: str):
 
 
 @app.post("/api/task/{task_id}/pause")
-async def task_pause(task_id: str):
+async def task_pause(task_id: str, request: Request):
     """暂停任务（在下一个节点边界生效）。"""
     from core.task_manager import get_task
     tc = get_task(task_id)
@@ -533,6 +629,7 @@ async def task_pause(task_id: str):
             {"error": f"任务不存在: {task_id}"},
             status_code=404,
         )
+    await _require_session_ownership(request, tc.session_id)
     if tc.state.value not in ("running",):
         return {"task_id": task_id, "state": tc.state.value, "message": "任务不在运行中，无法暂停"}
     tc.pause()
@@ -540,7 +637,7 @@ async def task_pause(task_id: str):
 
 
 @app.post("/api/task/{task_id}/resume")
-async def task_resume(task_id: str):
+async def task_resume(task_id: str, request: Request):
     """继续执行暂停的任务。"""
     from core.task_manager import get_task
     tc = get_task(task_id)
@@ -549,6 +646,7 @@ async def task_resume(task_id: str):
             {"error": f"任务不存在: {task_id}"},
             status_code=404,
         )
+    await _require_session_ownership(request, tc.session_id)
     if tc.state.value not in ("paused",):
         return {"task_id": task_id, "state": tc.state.value, "message": "任务未暂停，无需继续"}
     tc.resume()
@@ -556,7 +654,7 @@ async def task_resume(task_id: str):
 
 
 @app.post("/api/task/{task_id}/cancel")
-async def task_cancel(task_id: str):
+async def task_cancel(task_id: str, request: Request):
     """取消任务（在下一个节点边界终止）。"""
     from core.task_manager import get_task
     tc = get_task(task_id)
@@ -565,6 +663,7 @@ async def task_cancel(task_id: str):
             {"error": f"任务不存在: {task_id}"},
             status_code=404,
         )
+    await _require_session_ownership(request, tc.session_id)
     if tc.state.value in ("done", "cancelled", "error"):
         return {"task_id": task_id, "state": tc.state.value, "message": "任务已结束"}
     tc.cancel()
@@ -574,7 +673,7 @@ async def task_cancel(task_id: str):
 # ===================== 代码撤销/历史接口 =====================
 
 @app.post("/api/code/undo", response_model=CodeUndoResponse)
-async def code_undo(req: CodeUndoRequest):
+async def code_undo(req: CodeUndoRequest, request: Request):
     """撤销指定文件最近一次代码修改，恢复到上一个快照。
 
     使用方式：
@@ -588,6 +687,7 @@ async def code_undo(req: CodeUndoRequest):
         - status="error"       → 路径非法或撤销异常
     """
     validate_session_id(req.session_id)
+    await _require_session_ownership(request, req.session_id)
     session_generation = begin_request(req.session_id)
     filepath = req.filepath.strip()
     if not filepath:
@@ -635,6 +735,7 @@ async def code_undo(req: CodeUndoRequest):
 @app.get("/api/code/history", response_model=list[CodeHistoryItem])
 async def code_history(
     filepath: str,
+    request: Request,
     session_id: str = Query(..., description="会话 ID，用于定位会话快照"),
 ):
     """查询指定文件的修改历史列表。
@@ -645,6 +746,7 @@ async def code_history(
     返回：按 snapshot_id 升序排列的历史记录列表。
     """
     validate_session_id(session_id)
+    await _require_session_ownership(request, session_id)
     session_generation = begin_request(session_id)
     filepath = filepath.strip()
     if not filepath:
@@ -687,6 +789,7 @@ async def code_history(
 
 @app.post("/api/code/upload", response_model=UploadResponse)
 async def upload_file(
+    request: Request,
     file: UploadFile = File(...),
     session_id: str = Query(..., description="会话 ID（用于隔离不同会话的上传文件）"),
 ):
@@ -709,6 +812,7 @@ async def upload_file(
         - 文件名规范化：只保留 [a-zA-Z0-9._-]，其他字符替换为 _
     """
     validate_session_id(session_id)
+    await _require_session_ownership(request, session_id)
     session_generation = begin_request(session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
@@ -775,7 +879,7 @@ async def upload_file(
 
 
 @app.get("/api/code/uploads/{session_id}", response_model=list[UploadItem])
-async def list_uploads(session_id: str):
+async def list_uploads(session_id: str, request: Request):
     """列出指定会话的所有已上传文件。
 
     使用方式：
@@ -784,6 +888,7 @@ async def list_uploads(session_id: str):
     返回：按文件名排序的上传文件列表。
     """
     validate_session_id(session_id)
+    await _require_session_ownership(request, session_id)
     session_generation = begin_request(session_id)
     if not ENABLE_CODE_AGENT:
         return []
@@ -820,7 +925,7 @@ async def list_uploads(session_id: str):
 
 
 @app.delete("/api/code/uploads/{session_id}/{filename}", response_model=UploadDeleteResponse)
-async def delete_upload(session_id: str, filename: str):
+async def delete_upload(session_id: str, filename: str, request: Request):
     """删除指定会话的上传文件。
 
     使用方式：
@@ -832,6 +937,7 @@ async def delete_upload(session_id: str, filename: str):
         - status="error"      → 删除异常
     """
     validate_session_id(session_id)
+    await _require_session_ownership(request, session_id)
     session_generation = begin_request(session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
@@ -867,10 +973,13 @@ async def delete_upload(session_id: str, filename: str):
         )
 
 
-# ===================== 工作区（打开项目）接口 =====================
+# ===================== 修改确认（Diff 预览）接口 =====================
 
 @app.get("/api/code/pending")
-async def code_pending(session_id: str = Query(..., description="会话 ID")):
+async def code_pending(
+    request: Request,
+    session_id: str = Query(..., description="会话 ID"),
+):
     """获取待确认的修改列表（Agent 生成 diff 预览后，前端展示用）。
 
     使用方式：
@@ -879,6 +988,7 @@ async def code_pending(session_id: str = Query(..., description="会话 ID")):
     返回：{session_id, pending: [{filepath, action, diff, is_new?}, ...], count}
     """
     validate_session_id(session_id)
+    await _require_session_ownership(request, session_id)
     session_generation = begin_request(session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
@@ -896,7 +1006,10 @@ async def code_pending(session_id: str = Query(..., description="会话 ID")):
 
 
 @app.post("/api/code/confirm")
-async def code_confirm(session_id: str = Query(..., description="会话 ID")):
+async def code_confirm(
+    request: Request,
+    session_id: str = Query(..., description="会话 ID"),
+):
     """确认执行所有待确认的修改（真正写入文件 + 创建快照）。
 
     使用方式：
@@ -905,6 +1018,7 @@ async def code_confirm(session_id: str = Query(..., description="会话 ID")):
     返回：{status, confirmed_count, results: [{filepath, snapshot_id, status}]}
     """
     validate_session_id(session_id)
+    await _require_session_ownership(request, session_id)
     session_generation = begin_request(session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
@@ -921,7 +1035,10 @@ async def code_confirm(session_id: str = Query(..., description="会话 ID")):
 
 
 @app.post("/api/code/cancel")
-async def code_cancel(session_id: str = Query(..., description="会话 ID")):
+async def code_cancel(
+    request: Request,
+    session_id: str = Query(..., description="会话 ID"),
+):
     """取消所有待确认的修改（不执行任何写入，前端提示用户重新输入需求）。
 
     使用方式：
@@ -930,6 +1047,7 @@ async def code_cancel(session_id: str = Query(..., description="会话 ID")):
     返回：{status, cancelled_count}
     """
     validate_session_id(session_id)
+    await _require_session_ownership(request, session_id)
     session_generation = begin_request(session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
@@ -948,7 +1066,7 @@ async def code_cancel(session_id: str = Query(..., description="会话 ID")):
 # ===================== 工作区（打开项目）接口 =====================
 
 @app.post("/api/workspace/open", response_model=WorkspaceOpenResponse)
-async def workspace_open(req: WorkspaceOpenRequest):
+async def workspace_open(req: WorkspaceOpenRequest, request: Request):
     """打开本地项目目录，加入会话级白名单。
 
     使用方式：
@@ -964,6 +1082,7 @@ async def workspace_open(req: WorkspaceOpenRequest):
         - status="error"         → 打开失败（路径不存在/超限/黑名单等）
     """
     validate_session_id(req.session_id)
+    await _require_session_ownership(request, req.session_id)
     session_generation = begin_request(req.session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
@@ -1004,7 +1123,7 @@ async def workspace_open(req: WorkspaceOpenRequest):
 
 
 @app.post("/api/workspace/open-file", response_model=WorkspaceOpenFileResponse)
-async def workspace_open_file(req: WorkspaceOpenFileRequest):
+async def workspace_open_file(req: WorkspaceOpenFileRequest, request: Request):
     """前端打开**单个文件**（非整个项目目录）时调用，把文件 + 父目录加入会话白名单。
 
     适用场景：
@@ -1022,6 +1141,8 @@ async def workspace_open_file(req: WorkspaceOpenFileRequest):
         - status="already_open"  → 该文件已注册过（幂等）
     """
     validate_session_id(req.session_id)
+    # 会话归属校验：首次访问声明归属，他人会话 403
+    await _require_session_ownership(request, req.session_id)
     session_generation = begin_request(req.session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
@@ -1055,6 +1176,7 @@ async def workspace_open_file(req: WorkspaceOpenFileRequest):
 
 @app.get("/api/workspace/tree")
 async def workspace_tree(
+    request: Request,
     session_id: str = Query(..., description="会话 ID"),
     path: str = Query(..., description="要扫描的目录路径（通常是项目根或子目录）"),
     depth: int = Query(None, description="扫描深度，默认 2，最大 5"),
@@ -1070,6 +1192,8 @@ async def workspace_tree(
     返回：{name, path, type, children: [...]}
     """
     validate_session_id(session_id)
+    # 会话归属校验：首次访问声明归属，他人会话 403
+    await _require_session_ownership(request, session_id)
     session_generation = begin_request(session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
@@ -1089,6 +1213,7 @@ async def workspace_tree(
 
 @app.get("/api/workspace/file", response_model=WorkspaceFileResponse)
 async def workspace_file(
+    request: Request,
     session_id: str = Query(..., description="会话 ID"),
     filepath: str = Query(..., description="文件路径"),
 ):
@@ -1100,6 +1225,8 @@ async def workspace_file(
     返回：{filepath, content, size}
     """
     validate_session_id(session_id)
+    # 会话归属校验：首次访问声明归属，他人会话 403
+    await _require_session_ownership(request, session_id)
     session_generation = begin_request(session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
@@ -1121,7 +1248,7 @@ async def workspace_file(
 
 
 @app.post("/api/workspace/save", response_model=WorkspaceSaveResponse)
-async def workspace_save(req: WorkspaceSaveRequest):
+async def workspace_save(req: WorkspaceSaveRequest, request: Request):
     """保存工作区文件内容（前端 Ctrl+S 调用，自动创建快照支持撤销）。
 
     使用方式：
@@ -1131,6 +1258,8 @@ async def workspace_save(req: WorkspaceSaveRequest):
     返回：{status, snapshot_id, filepath}
     """
     validate_session_id(req.session_id)
+    # 会话归属校验：首次访问声明归属，他人会话 403
+    await _require_session_ownership(request, req.session_id)
     session_generation = begin_request(req.session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
@@ -1169,7 +1298,7 @@ async def workspace_save(req: WorkspaceSaveRequest):
 
 
 @app.get("/api/workspace/status")
-async def workspace_status(session_id: str = Query(..., description="会话 ID")):
+async def workspace_status(request: Request, session_id: str = Query(..., description="会话 ID")):
     """查询当前会话已打开的项目 + 独立打开文件列表。
 
     使用方式：
@@ -1185,6 +1314,8 @@ async def workspace_status(session_id: str = Query(..., description="会话 ID")
       }
     """
     validate_session_id(session_id)
+    # 会话归属校验：首次访问声明归属，他人会话 403
+    await _require_session_ownership(request, session_id)
     session_generation = begin_request(session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(
@@ -1206,6 +1337,7 @@ async def workspace_status(session_id: str = Query(..., description="会话 ID")
 
 @app.post("/api/workspace/close")
 async def workspace_close(
+    request: Request,
     session_id: str = Query(..., description="会话 ID"),
     project_path: str = Query(None, description="要关闭的项目路径；为空时关闭该会话所有项目"),
 ):
@@ -1218,6 +1350,8 @@ async def workspace_close(
     返回：{session_id, removed_count, status}
     """
     validate_session_id(session_id)
+    # 会话归属校验：首次访问声明归属，他人会话 403
+    await _require_session_ownership(request, session_id)
     session_generation = begin_request(session_id)
     if not ENABLE_CODE_AGENT:
         return JSONResponse(

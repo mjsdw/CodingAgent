@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="zh-CN" data-auth-page="login">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CodeAgent · 用户登录</title>
+  <style>
+    * { box-sizing: border-box; }
+    :root {
+      color-scheme: light;
+      --accent: #4f46e5;
+      --accent-hover: #4338ca;
+      --text: #18181b;
+      --muted: #71717a;
+      --border: #e4e4e7;
+      --surface: rgba(255, 255, 255, 0.94);
+      --error: #b91c1c;
+      --success: #15803d;
+    }
+    body {
+      min-height: 100vh;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 18% 18%, rgba(99, 102, 241, 0.15), transparent 34%),
+        radial-gradient(circle at 82% 78%, rgba(14, 165, 233, 0.12), transparent 32%),
+        #f8fafc;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+    .auth-shell {
+      width: min(100%, 420px);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 20px;
+      font-size: 20px;
+      font-weight: 700;
+    }
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 10px;
+      color: white;
+      background: linear-gradient(135deg, #4f46e5, #818cf8);
+      box-shadow: 0 8px 22px rgba(79, 70, 229, 0.24);
+    }
+    .auth-card {
+      padding: 30px;
+      border: 1px solid rgba(228, 228, 231, 0.9);
+      border-radius: 18px;
+      background: var(--surface);
+      box-shadow: 0 22px 60px rgba(15, 23, 42, 0.1);
+      backdrop-filter: blur(14px);
+    }
+    .auth-card h1 {
+      margin: 0 0 6px;
+      font-size: 24px;
+      text-align: center;
+    }
+    .subtitle {
+      margin: 0 0 22px;
+      color: var(--muted);
+      font-size: 14px;
+      text-align: center;
+    }
+    .tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      padding: 4px;
+      margin-bottom: 22px;
+      border-radius: 10px;
+      background: #f4f4f5;
+    }
+    .tab {
+      min-height: 38px;
+      border: 0;
+      border-radius: 8px;
+      color: var(--muted);
+      background: transparent;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .tab.active {
+      color: var(--text);
+      background: white;
+      box-shadow: 0 1px 4px rgba(15, 23, 42, 0.1);
+    }
+    .field {
+      display: grid;
+      gap: 7px;
+      margin-bottom: 16px;
+    }
+    .field[hidden] { display: none; }
+    label {
+      font-size: 13px;
+      font-weight: 600;
+    }
+    input {
+      width: 100%;
+      min-height: 44px;
+      padding: 0 13px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      outline: none;
+      color: var(--text);
+      background: white;
+      font: inherit;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+    }
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    #auth-submit {
+      width: 100%;
+      min-height: 44px;
+      margin-top: 4px;
+      border: 0;
+      border-radius: 9px;
+      color: white;
+      background: var(--accent);
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.15s;
+    }
+    #auth-submit:hover:not(:disabled) { background: var(--accent-hover); }
+    #auth-submit:active:not(:disabled) { transform: translateY(1px); }
+    #auth-submit:disabled { cursor: wait; opacity: 0.72; }
+    #auth-message {
+      min-height: 20px;
+      margin: 14px 0 0;
+      color: var(--error);
+      font-size: 13px;
+      text-align: center;
+    }
+    #auth-message[data-type="success"] { color: var(--success); }
+    #auth-message[hidden] { visibility: hidden; display: block; }
+    .privacy-note {
+      margin: 18px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+      text-align: center;
+    }
+  </style>
+  <script src="/static/auth.js" defer></script>
+</head>
+<body>
+  <main id="auth-app" class="auth-shell">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">C</span> CodeAgent</div>
+    <section class="auth-card" aria-labelledby="auth-form-title">
+      <h1 id="auth-form-title">欢迎回来</h1>
+      <p class="subtitle">登录后打开并处理你自己的项目</p>
+
+      <div class="tabs" role="tablist" aria-label="账号操作">
+        <button id="login-tab" class="tab active" type="button" role="tab" aria-selected="true">登录</button>
+        <button id="register-tab" class="tab" type="button" role="tab" aria-selected="false">注册</button>
+      </div>
+
+      <form id="auth-form">
+        <div class="field">
+          <label for="username">用户名</label>
+          <input id="username" name="username" type="text" autocomplete="username"
+                 minlength="3" maxlength="32" pattern="[A-Za-z0-9_.-]+" required autofocus>
+          <span class="hint">3–32 位，可使用字母、数字、点、下划线和连字符</span>
+        </div>
+        <div class="field">
+          <label for="password">密码</label>
+          <input id="password" name="password" type="password" autocomplete="current-password"
+                 minlength="10" maxlength="72" required>
+          <span class="hint">至少 10 个字符</span>
+        </div>
+        <div id="password-confirm-field" class="field" hidden>
+          <label for="password-confirm">确认密码</label>
+          <input id="password-confirm" name="password_confirm" type="password"
+                 autocomplete="new-password" minlength="10" maxlength="72">
+        </div>
+        <button id="auth-submit" type="submit">登录</button>
+        <p id="auth-message" role="status" aria-live="polite" hidden></p>
+      </form>
+      <p class="privacy-note">账号只用于区分你的会话和项目，不需要邮箱验证。</p>
+    </section>
+  </main>
+</body>
+</html>

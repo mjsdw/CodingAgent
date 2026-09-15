@@ -34,7 +34,8 @@ from tools.code_tool import (
     undo_last, get_history,
     # 工作区相关
     add_session_workspace, add_session_open_file,
-    remove_session_workspace, get_session_workspaces, get_session_open_files,
+    remove_session_workspace, remove_workspace_from_all_sessions,
+    get_session_workspaces, get_session_open_files,
     has_session_files,
     list_tree_impl, read_workspace_file_impl, save_workspace_file_impl,
     # 代码读写 - 仅导出带 session_id 的 *_impl 裸函数版本
@@ -43,6 +44,7 @@ from tools.code_tool import (
     # Diff 预览与待确认修改
     preview_edit_impl, preview_write_impl,
     get_pending_modifications, confirm_modifications, cancel_modifications,
+    cancel_modifications_under_path, delete_snapshots_under_path,
 )
 
 __all__ = [
@@ -59,6 +61,7 @@ __all__ = [
     "add_session_workspace",
     "add_session_open_file",
     "remove_session_workspace",
+    "remove_workspace_from_all_sessions",
     "get_session_workspaces",
     "get_session_open_files",
     "has_session_files",
@@ -77,4 +80,6 @@ __all__ = [
     "get_pending_modifications",
     "confirm_modifications",
     "cancel_modifications",
+    "cancel_modifications_under_path",
+    "delete_snapshots_under_path",
 ]

@@ -9,6 +9,56 @@ VECTOR_DB_PATH = "./db"                          # Chroma 向量库持久化目�
 SYSTEM_ROLE_FILE = "./config/system_role.md"     # 系统角色提示词文件
 DATA_FILE_PATH = "./data/rag.pdf"                # 待入库的源文档
 
+# ---------------------- 多用户认证配置 ----------------------
+# 认证数据保存在运行时数据目录中，不进入 Git。
+AUTH_DB_PATH = "./data/auth.db"
+AUTH_BCRYPT_ROUNDS = 12
+AUTH_SESSION_TTL_SECONDS = 86400
+AUTH_COOKIE_SECURE = False
+AUTH_LOGIN_ATTEMPT_LIMIT = 5
+AUTH_LOGIN_WINDOW_SECONDS = 900
+AUTH_REGISTER_ATTEMPT_LIMIT = 5
+AUTH_REGISTER_WINDOW_SECONDS = 3600
+
+# ---------------------- 用户私有项目配置 ----------------------
+# 每个项目的物理路径由 user_id 和 project_id 计算，项目名称只作为元数据。
+USER_PROJECTS_DIR = "./data/user-projects"
+
+# 浏览器本地项目上传限制。集合必须保持小写且不可变，前后端共享同一策略。
+PROJECT_UPLOAD_MAX_FILE_SIZE = 2 * 1024 * 1024
+PROJECT_UPLOAD_MAX_PROJECT_SIZE = 100 * 1024 * 1024
+PROJECT_UPLOAD_MAX_PROJECT_FILES = 10_000
+PROJECT_UPLOAD_MAX_BATCH_FILES = 50
+PROJECT_UPLOAD_MAX_BATCH_SIZE = 5 * 1024 * 1024
+
+PROJECT_UPLOAD_ALLOWED_EXTENSIONS = frozenset({
+    ".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".go", ".rs",
+    ".c", ".cpp", ".h", ".hpp", ".cs", ".rb", ".php", ".swift",
+    ".kt", ".kts", ".scala", ".md", ".txt", ".json", ".yaml",
+    ".yml", ".toml", ".ini", ".cfg", ".html", ".css", ".scss",
+    ".less", ".vue", ".svelte", ".sql", ".sh", ".bat", ".ps1",
+    ".xml", ".properties", ".gradle", ".lock", ".csv", ".tsv",
+})
+PROJECT_UPLOAD_ALLOWED_FILENAMES = frozenset({
+    "dockerfile", "makefile", "readme", "license", "notice", "procfile",
+    ".gitignore", ".dockerignore", ".editorconfig",
+})
+PROJECT_UPLOAD_EXCLUDED_DIRECTORIES = frozenset({
+    ".git", ".svn", ".hg", "node_modules", ".venv", "venv", "env",
+    "dist", "build", "target", "out", "coverage", "__pycache__",
+    ".pytest_cache", ".mypy_cache", ".ruff_cache", ".idea", ".vscode",
+})
+PROJECT_UPLOAD_EXCLUDED_FILENAMES = frozenset({
+    ".env", ".npmrc", ".pypirc", ".netrc", "_netrc", ".coverage",
+    "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "credentials",
+    "credentials.json", "service-account.json",
+})
+PROJECT_UPLOAD_EXCLUDED_PREFIXES = frozenset({".env."})
+PROJECT_UPLOAD_EXCLUDED_SUFFIXES = frozenset({
+    ".pem", ".key", ".p12", ".pfx", ".crt", ".cer", ".der", ".jks",
+    ".keystore",
+})
+
 # ---------------------- Embedding 模型配置 ----------------------
 EMBED_MODEL_NAME = "BAAI/bge-small-zh-v1.5"  # 中文 BGE 向量模型
 EMBED_DEVICE = "cpu"                          # 有N卡cuda环境改成 "cuda"

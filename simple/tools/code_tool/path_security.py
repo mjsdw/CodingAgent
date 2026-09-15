@@ -11,6 +11,8 @@
 #   2. 静态白名单：config.ALLOWED_WORKSPACES（默认空）
 #   3. 会话动态白名单：用户主动"打开项目"后加入
 
+import re
+import threading
 from pathlib import Path
 
 from core.session_id import validate_session_id
@@ -18,6 +20,7 @@ from core.session_id import validate_session_id
 from config import (
     CODE_HISTORY_DIR, BLOCKED_DIRS, ALLOWED_WORKSPACES,
     UPLOAD_DIR,
+    USER_PROJECTS_DIR,
     WORKSPACE_MAX_PROJECTS,
     WORKSPACE_ALLOWED_ROOTS,
     WORKSPACE_HIDDEN_DIRS,
@@ -40,14 +43,17 @@ _ALLOWED_PATHS: list[Path] = _normalize_workspaces()
 
 
 # ------------------------------------------------------------------
-# 内置白名单：项目自身功能目录（无需用户打开项目即可访问）
+# 内置白名单：当前会话自己的功能目录（无需用户打开项目即可访问）
 # ------------------------------------------------------------------
-# 上传文件目录（data/workspace/uploads/）和快照目录（data/workspace/history/）
-# 是项目内置功能的一部分，无论用户是否打开项目都需要能访问
-_BUILTIN_ALLOWED_PATHS: list[Path] = [
-    Path(UPLOAD_DIR).resolve(),
-    Path(CODE_HISTORY_DIR).resolve(),
-]
+def _get_session_builtin_paths(session_id: str = None) -> list[Path]:
+    """Return only the upload/history directories owned by this session."""
+    if not session_id:
+        return []
+    validate_session_id(session_id)
+    return [
+        Path(UPLOAD_DIR).resolve() / session_id,
+        Path(CODE_HISTORY_DIR).resolve() / session_id,
+    ]
 
 
 # ------------------------------------------------------------------
@@ -60,9 +66,52 @@ _SESSION_WORKSPACES: dict[str, list[Path]] = {}
 # 会话级独立打开文件表（前端打开单个文件、不在已打开项目目录内时使用）
 # 结构：{session_id: [Path(文件1), Path(文件2), ...]}
 _SESSION_OPEN_FILES: dict[str, list[Path]] = {}
+_SESSION_WORKSPACE_LOCK = threading.RLock()
 
 
-def add_session_workspace(session_id: str, project_path: str) -> Path:
+_USER_ID_RE = re.compile(r"^[a-z0-9-]{1,128}$")
+_PRIVATE_PROJECT_ID_RE = re.compile(r"^project-[0-9a-f]{32}$")
+
+
+def _is_same_or_descendant(path: Path, root: Path) -> bool:
+    """Return whether a resolved path is the root itself or below it."""
+    return path == root or root in path.parents
+
+
+def _get_user_project_root(user_id: str) -> Path:
+    """Return the server-side private project mirror root for one user."""
+    if not isinstance(user_id, str) or not _USER_ID_RE.fullmatch(user_id):
+        raise ValueError("用户标识无效")
+    return (Path(USER_PROJECTS_DIR).resolve() / user_id).resolve()
+
+
+def get_private_project_id_for_workspace(
+    project_path: str | Path,
+    user_id: str,
+) -> str | None:
+    """Return the ID only for this owner's exact private mirror files root."""
+    try:
+        user_root = _get_user_project_root(user_id)
+        candidate = Path(project_path).resolve()
+        relative = candidate.relative_to(user_root)
+    except (OSError, RuntimeError, TypeError, ValueError):
+        return None
+
+    if len(relative.parts) != 3:
+        return None
+    projects_component, project_id, files_component = relative.parts
+    if projects_component != "projects" or files_component != "files":
+        return None
+    if _PRIVATE_PROJECT_ID_RE.fullmatch(project_id) is None:
+        return None
+    return project_id
+
+
+def add_session_workspace(
+    session_id: str,
+    project_path: str,
+    user_id: str = None,
+) -> Path:
     """打开项目时调用，把项目根路径加入会话级白名单。
 
     :param session_id: 会话 ID
@@ -74,6 +123,12 @@ def add_session_workspace(session_id: str, project_path: str) -> Path:
 
     p = Path(project_path).resolve()
 
+    # Web 权限先于文件系统探测，避免用错误信息枚举服务器路径。
+    if user_id:
+        user_root = _get_user_project_root(user_id)
+        if not _is_same_or_descendant(p, user_root):
+            raise ValueError("项目不存在或无权访问")
+
     # 1. 必须存在且是目录
     if not p.exists():
         raise ValueError(f"项目目录不存在: {p}")
@@ -84,10 +139,10 @@ def add_session_workspace(session_id: str, project_path: str) -> Path:
     if _is_blocked(p):
         raise ValueError(f"禁止访问系统目录: {p}")
 
-    # 3. 根目录前缀限制（可选，配置 WORKSPACE_ALLOWED_ROOTS 后生效）
-    if WORKSPACE_ALLOWED_ROOTS:
+    # 3. Web 用户只能打开浏览器同步到其私有目录的服务器副本。
+    if not user_id and WORKSPACE_ALLOWED_ROOTS:
         allowed_prefix = any(
-            str(p).lower().startswith(root.lower())
+            _is_same_or_descendant(p, Path(root).resolve())
             for root in WORKSPACE_ALLOWED_ROOTS
         )
         if not allowed_prefix:
@@ -96,23 +151,28 @@ def add_session_workspace(session_id: str, project_path: str) -> Path:
             )
 
     # 4. 防止重复加入
-    current = _SESSION_WORKSPACES.get(session_id, [])
-    for existing in current:
-        if existing == p:
-            return p   # 已存在，幂等返回
+    with _SESSION_WORKSPACE_LOCK:
+        current = _SESSION_WORKSPACES.get(session_id, [])
+        for existing in current:
+            if existing == p:
+                return p   # 已存在，幂等返回
 
-    # 5. 数量限制
-    if len(current) >= WORKSPACE_MAX_PROJECTS:
-        raise ValueError(
-            f"会话已打开 {len(current)} 个项目，达到上限 {WORKSPACE_MAX_PROJECTS}"
-        )
+        # 5. 数量限制
+        if len(current) >= WORKSPACE_MAX_PROJECTS:
+            raise ValueError(
+                f"会话已打开 {len(current)} 个项目，达到上限 {WORKSPACE_MAX_PROJECTS}"
+            )
 
-    # 6. 加入会话白名单
-    _SESSION_WORKSPACES.setdefault(session_id, []).append(p)
+        # 6. 加入会话白名单
+        _SESSION_WORKSPACES.setdefault(session_id, []).append(p)
     return p
 
 
-def add_session_open_file(session_id: str, file_path: str) -> Path:
+def add_session_open_file(
+    session_id: str,
+    file_path: str,
+    user_id: str = None,
+) -> Path:
     """前端打开独立文件时调用，把文件 + 所在目录加入白名单。
 
     与 add_session_workspace 的差异：
@@ -128,6 +188,12 @@ def add_session_open_file(session_id: str, file_path: str) -> Path:
     validate_session_id(session_id)
 
     p = Path(file_path).resolve()
+
+    # Web 权限先于文件系统探测，避免用错误信息枚举服务器路径。
+    if user_id:
+        user_root = _get_user_project_root(user_id)
+        if not _is_same_or_descendant(p, user_root):
+            raise ValueError("文件不存在或无权访问")
 
     # 1. 必须存在且是文件
     if not p.exists():
@@ -149,10 +215,10 @@ def add_session_open_file(session_id: str, file_path: str) -> Path:
             f"禁止访问隐藏目录/文件: {p}（命中敏感目录: {hidden_hit}）"
         )
 
-    # 4. 根目录前缀限制（复用 WORKSPACE_ALLOWED_ROOTS）
-    if WORKSPACE_ALLOWED_ROOTS:
+    # 4. Web 用户只能打开其服务器私有项目副本中的文件。
+    if not user_id and WORKSPACE_ALLOWED_ROOTS:
         allowed_prefix = any(
-            str(p).lower().startswith(root.lower())
+            _is_same_or_descendant(p, Path(root).resolve())
             for root in WORKSPACE_ALLOWED_ROOTS
         )
         if not allowed_prefix:
@@ -160,26 +226,23 @@ def add_session_open_file(session_id: str, file_path: str) -> Path:
                 f"文件路径不在允许的根目录前缀内: {p}（允许前缀: {WORKSPACE_ALLOWED_ROOTS}）"
             )
 
-    # 5. 把文件所在目录加入目录白名单（让 grep_code/list_dir 可用，超限忽略）
+    # 5. 把文件所在目录加入目录白名单（让 grep_code/list_dir 可用）
     parent_dir = p.parent
-    try:
-        add_session_workspace(session_id, str(parent_dir))
-    except ValueError:
-        # 目录已存在或超限，不影响文件本身的注册
-        pass
+    add_session_workspace(session_id, str(parent_dir), user_id=user_id)
 
     # 6. 独立文件去重记录
-    current_files = _SESSION_OPEN_FILES.setdefault(session_id, [])
-    if p in current_files:
-        return p  # 已存在，幂等返回
+    with _SESSION_WORKSPACE_LOCK:
+        current_files = _SESSION_OPEN_FILES.setdefault(session_id, [])
+        if p in current_files:
+            return p  # 已存在，幂等返回
 
-    # 7. 文件数量限制（复用 WORKSPACE_MAX_PROJECTS）
-    if len(current_files) >= WORKSPACE_MAX_PROJECTS:
-        raise ValueError(
-            f"会话已打开 {len(current_files)} 个独立文件，达到上限 {WORKSPACE_MAX_PROJECTS}"
-        )
+        # 7. 文件数量限制（复用 WORKSPACE_MAX_PROJECTS）
+        if len(current_files) >= WORKSPACE_MAX_PROJECTS:
+            raise ValueError(
+                f"会话已打开 {len(current_files)} 个独立文件，达到上限 {WORKSPACE_MAX_PROJECTS}"
+            )
 
-    current_files.append(p)
+        current_files.append(p)
     return p
 
 
@@ -191,34 +254,67 @@ def remove_session_workspace(session_id: str, project_path: str = None) -> int:
     :return: 移除的项目数（含独立打开文件数）
     """
     validate_session_id(session_id)
-    if session_id not in _SESSION_WORKSPACES and session_id not in _SESSION_OPEN_FILES:
-        return 0
+    with _SESSION_WORKSPACE_LOCK:
+        if session_id not in _SESSION_WORKSPACES and session_id not in _SESSION_OPEN_FILES:
+            return 0
 
-    if project_path is None:
-        # 关闭该会话所有项目 + 同步清空独立打开文件表
-        count = len(_SESSION_WORKSPACES.get(session_id, []))
-        count += len(_SESSION_OPEN_FILES.pop(session_id, []))
-        if session_id in _SESSION_WORKSPACES:
-            del _SESSION_WORKSPACES[session_id]
-        return count
+        if project_path is None:
+            # 关闭该会话所有项目 + 同步清空独立打开文件表
+            count = len(_SESSION_WORKSPACES.get(session_id, []))
+            count += len(_SESSION_OPEN_FILES.pop(session_id, []))
+            if session_id in _SESSION_WORKSPACES:
+                del _SESSION_WORKSPACES[session_id]
+            return count
 
-    p = Path(project_path).resolve()
-    current = _SESSION_WORKSPACES.get(session_id, [])
-    before = len(current)
-    _SESSION_WORKSPACES[session_id] = [x for x in current if x != p]
-    return before - len(_SESSION_WORKSPACES[session_id])
+        p = Path(project_path).resolve()
+        current = _SESSION_WORKSPACES.get(session_id, [])
+        before = len(current)
+        remaining = [x for x in current if x != p]
+        if remaining:
+            _SESSION_WORKSPACES[session_id] = remaining
+        else:
+            _SESSION_WORKSPACES.pop(session_id, None)
+        return before - len(remaining)
+
+
+def remove_workspace_from_all_sessions(project_path: str) -> int:
+    """Remove one exact project and files below it from every session."""
+    project = Path(project_path).resolve()
+    removed = 0
+    with _SESSION_WORKSPACE_LOCK:
+        for session_id, workspaces in list(_SESSION_WORKSPACES.items()):
+            remaining = [workspace for workspace in workspaces if workspace != project]
+            removed += len(workspaces) - len(remaining)
+            if remaining:
+                _SESSION_WORKSPACES[session_id] = remaining
+            else:
+                _SESSION_WORKSPACES.pop(session_id, None)
+        for session_id, open_files in list(_SESSION_OPEN_FILES.items()):
+            remaining = [
+                filepath
+                for filepath in open_files
+                if not _is_same_or_descendant(filepath, project)
+            ]
+            removed += len(open_files) - len(remaining)
+            if remaining:
+                _SESSION_OPEN_FILES[session_id] = remaining
+            else:
+                _SESSION_OPEN_FILES.pop(session_id, None)
+    return removed
 
 
 def get_session_workspaces(session_id: str) -> list[Path]:
     """获取指定会话已打开的项目根路径列表。"""
     validate_session_id(session_id)
-    return list(_SESSION_WORKSPACES.get(session_id, []))
+    with _SESSION_WORKSPACE_LOCK:
+        return list(_SESSION_WORKSPACES.get(session_id, []))
 
 
 def get_session_open_files(session_id: str) -> list[Path]:
     """获取指定会话中，前端单独打开的文件列表（用于 Planner 优先提示）。"""
     validate_session_id(session_id)
-    return list(_SESSION_OPEN_FILES.get(session_id, []))
+    with _SESSION_WORKSPACE_LOCK:
+        return list(_SESSION_OPEN_FILES.get(session_id, []))
 
 
 def has_session_files(session_id: str) -> bool:
@@ -255,30 +351,30 @@ def _get_effective_allowed(session_id: str = None) -> list[Path]:
     :param session_id: 会话 ID（为空则只返回内置+静态白名单）
     :return: 合并后的白名单 Path 列表
     """
-    allowed = list(_BUILTIN_ALLOWED_PATHS)   # 内置功能目录（始终生效）
-    allowed.extend(_ALLOWED_PATHS)          # 静态配置白名单
+    allowed = _get_session_builtin_paths(session_id)
+    # ALLOWED_WORKSPACES is a local CLI/admin compatibility setting. Web
+    # sessions must explicitly bind a path inside their private project root.
+    if not session_id or session_id == "cli-default":
+        allowed.extend(_ALLOWED_PATHS)
     if session_id:
         validate_session_id(session_id)
-        allowed.extend(_SESSION_WORKSPACES.get(session_id, []))
-        # ★ 新增：把独立打开的文件也加入白名单（_is_within_allowed 用 path == allowed 命中自身）
-        allowed.extend(_SESSION_OPEN_FILES.get(session_id, []))
+        with _SESSION_WORKSPACE_LOCK:
+            allowed.extend(_SESSION_WORKSPACES.get(session_id, []))
+            # ★ 新增：把独立打开的文件也加入白名单（_is_within_allowed 用 path == allowed 命中自身）
+            allowed.extend(_SESSION_OPEN_FILES.get(session_id, []))
     return allowed
 
 
 def _is_within_allowed(path: Path, session_id: str = None) -> bool:
     """判断路径是否在任一白名单目录内（含其自身）。
 
-    Windows 下 Path 的 == 和 parents 区分大小写（D:\\Temp vs d:\\temp），
-    因此统一转小写字符串比较，确保大小写无关。
-
     :param path: 待校验路径（已 resolve）
     :param session_id: 会话 ID，传入时合并会话级动态白名单
     """
-    path_lower = str(path).lower()
     for allowed in _get_effective_allowed(session_id):
-        allowed_lower = str(allowed).lower()
-        # path == allowed（自身）或 allowed 是 path 的父目录
-        if path_lower == allowed_lower or path_lower.startswith(allowed_lower.rstrip("\\/") + "\\"):
+        # Path comparison follows the host filesystem semantics: case-insensitive
+        # on Windows and case-sensitive on POSIX, without hard-coded separators.
+        if path == allowed or allowed in path.parents:
             return True
     return False
 
@@ -319,11 +415,7 @@ def _validate_path(filepath: str, session_id: str = None) -> Path:
 
     # 1. 白名单校验（必须命中任一允许的工作区）
     if not _is_within_allowed(p, session_id):
-        allowed = _get_effective_allowed(session_id)
-        allowed_str = ", ".join(str(a) for a in allowed) or "(空)"
-        raise ValueError(
-            f"路径不在允许的工作区内: {p}（允许: {allowed_str}）"
-        )
+        raise ValueError("路径不存在或无权访问")
 
     # 2. 隐藏目录穿越校验：即使白名单命中，.venv/.git/node_modules 等也不可访问
     if _contains_hidden_dir_component(p):
@@ -345,11 +437,7 @@ def _validate_write_path(filepath: str, session_id: str = None) -> Path:
 
     # 1. 白名单校验
     if not _is_within_allowed(p, session_id):
-        allowed = _get_effective_allowed(session_id)
-        allowed_str = ", ".join(str(a) for a in allowed) or "(空)"
-        raise ValueError(
-            f"路径不在允许的工作区内: {p}（允许: {allowed_str}）"
-        )
+        raise ValueError("路径不存在或无权访问")
 
     # 2. 隐藏目录穿越校验（写入路径也要拦：防止把敏感文件写进 .git 凭据/破坏虚拟环境）
     if _contains_hidden_dir_component(p):

@@ -224,7 +224,7 @@ def grep_code_impl(pattern: str, dirpath: str = "", session_id: str = None) -> s
         # 不指定目录时，遍历所有生效白名单（内置 + 静态 + 会话动态）
         search_roots = _get_effective_allowed(session_id)
 
-    return _grep_search(regex, search_roots)
+    return _grep_search(regex, search_roots, session_id=session_id)
 
 
 # ReDoS 防护：危险正则特征（嵌套量词 + 重叠量词）
@@ -260,7 +260,7 @@ def _safe_regex_search(regex, line: str) -> bool:
     return bool(regex.search(line))
 
 
-def _grep_search(regex, roots: list) -> str:
+def _grep_search(regex, roots: list, session_id: str = None) -> str:
     """在多个目录下递归搜索匹配行。
 
     限制：
@@ -278,7 +278,17 @@ def _grep_search(regex, roots: list) -> str:
         if not root.exists() or not root.is_dir():
             continue
         try:
-            for file_path in root.rglob("*"):
+            for discovered_path in root.rglob("*"):
+                # Recursive discovery must not turn an in-workspace symlink into
+                # an implicit capability for a target outside this session.
+                if discovered_path.is_symlink():
+                    continue
+                try:
+                    file_path = _validate_path(
+                        str(discovered_path), session_id
+                    )
+                except (ValueError, OSError):
+                    continue
                 if not file_path.is_file():
                     continue
                 if file_path.suffix.lower() not in _GREP_ALLOWED_EXTS:
@@ -330,7 +340,12 @@ def _is_hidden_dir(name: str) -> bool:
     return name.lower() in WORKSPACE_HIDDEN_DIRS
 
 
-def _scan_tree(root: Path, depth: int, max_depth: int) -> list[dict]:
+def _scan_tree(
+    root: Path,
+    depth: int,
+    max_depth: int,
+    session_id: str = None,
+) -> list[dict]:
     """递归扫描目录树，返回嵌套结构。
 
     :param root: 当前扫描目录
@@ -343,13 +358,21 @@ def _scan_tree(root: Path, depth: int, max_depth: int) -> list[dict]:
 
     items = []
     try:
-        entries = sorted(root.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
+        entries = [entry for entry in root.iterdir() if not entry.is_symlink()]
+        entries.sort(key=lambda x: (not x.is_dir(), x.name.lower()))
     except PermissionError:
         return []
     except Exception:
         return []
 
-    for entry in entries:
+    for discovered_entry in entries:
+        # Revalidate every recursively discovered path. The root was checked by
+        # list_tree_impl, but descendants may otherwise escape through links.
+        try:
+            entry = _validate_path(str(discovered_entry), session_id)
+        except (ValueError, OSError):
+            continue
+
         # 跳过隐藏目录
         if entry.is_dir() and _is_hidden_dir(entry.name):
             continue
@@ -366,7 +389,9 @@ def _scan_tree(root: Path, depth: int, max_depth: int) -> list[dict]:
         if entry.is_dir():
             # 递归扫描子目录
             if depth < max_depth:
-                item["children"] = _scan_tree(entry, depth + 1, max_depth)
+                item["children"] = _scan_tree(
+                    entry, depth + 1, max_depth, session_id=session_id
+                )
             else:
                 # 达到最大深度，标记为未展开
                 item["children"] = None   # None 表示有子项但未加载
@@ -410,7 +435,7 @@ def list_tree_impl(dirpath: str, session_id: str = None, depth: int = None) -> d
         "name": p.name,
         "path": str(p),
         "type": "dir",
-        "children": _scan_tree(p, 1, depth),
+        "children": _scan_tree(p, 1, depth, session_id=session_id),
     }
 
 

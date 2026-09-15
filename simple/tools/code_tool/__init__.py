@@ -15,6 +15,7 @@ from tools.code_tool.path_security import (
     add_session_workspace,
     add_session_open_file,
     remove_session_workspace,
+    remove_workspace_from_all_sessions,
     get_session_workspaces,
     get_session_open_files,
     has_session_files,
@@ -30,6 +31,7 @@ from tools.code_tool.path_security import (
 from tools.code_tool.snapshot import (
     undo_last,
     get_history,
+    delete_snapshots_under_path,
     _create_snapshot,
     _create_creation_snapshot,
     _discard_snapshot,
@@ -43,6 +45,7 @@ from tools.code_tool.diff_preview import (
     get_pending_modifications,
     confirm_modifications,
     cancel_modifications,
+    cancel_modifications_under_path,
     _generate_diff,
 )
 
@@ -68,18 +71,21 @@ __all__ = [
     "add_session_workspace",
     "add_session_open_file",
     "remove_session_workspace",
+    "remove_workspace_from_all_sessions",
     "get_session_workspaces",
     "get_session_open_files",
     "has_session_files",
     # 快照 / 撤销 / 历史
     "undo_last",
     "get_history",
+    "delete_snapshots_under_path",
     # Diff 预览 / 待确认修改
     "preview_edit_impl",
     "preview_write_impl",
     "get_pending_modifications",
     "confirm_modifications",
     "cancel_modifications",
+    "cancel_modifications_under_path",
     # 裸函数版本（推荐使用：所有调用方必须显式传 session_id）
     "read_file_impl",
     "edit_file_impl",

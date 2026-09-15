@@ -15,6 +15,7 @@
 
 import hashlib
 import json
+import shutil
 import time
 from pathlib import Path
 
@@ -217,3 +218,49 @@ def get_history(filepath: str, session_id: str = None) -> list[dict]:
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
         result.append(meta)
     return result
+
+
+def delete_snapshots_under_path(
+    session_ids: list[str] | tuple[str, ...],
+    project_path: str,
+) -> int:
+    """Delete snapshot directories whose metadata belongs to one project."""
+    project = Path(project_path).resolve()
+    history_base = Path(CODE_HISTORY_DIR).resolve()
+    deleted = 0
+    for raw_session_id in dict.fromkeys(session_ids):
+        session_id = validate_session_id(raw_session_id)
+        session_directory = history_base / session_id
+        if session_directory.is_symlink() or not session_directory.is_dir():
+            continue
+        try:
+            history_directories = list(session_directory.iterdir())
+        except OSError:
+            continue
+        for history_directory in history_directories:
+            if history_directory.is_symlink() or not history_directory.is_dir():
+                continue
+            matches_project = False
+            try:
+                metadata_files = list(history_directory.glob("*.meta.json"))
+            except OSError:
+                continue
+            for metadata_path in metadata_files:
+                try:
+                    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                    filepath = metadata.get("filepath")
+                    if not isinstance(filepath, str):
+                        continue
+                    Path(filepath).resolve().relative_to(project)
+                except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                    continue
+                matches_project = True
+                break
+            if not matches_project:
+                continue
+            try:
+                shutil.rmtree(history_directory)
+            except OSError:
+                continue
+            deleted += 1
+    return deleted
