@@ -48,6 +48,7 @@ from core.auth_routes import (
     resolve_auth_session,
     ensure_session_ownership,
 )
+from core.project_routes import router as project_router
 from core.auth_security import CSRF_HEADER_NAME
 from core.auth_store import get_auth_store
 from tools.code_tool import (
@@ -71,6 +72,9 @@ app = FastAPI(
 
 # 挂载认证路由（/api/auth/login、/register、/logout、/me）
 app.include_router(auth_router)
+
+# 挂载项目路由（/api/projects/*）
+app.include_router(project_router)
 
 
 @app.exception_handler(InvalidSessionIdError)
@@ -1297,6 +1301,15 @@ async def workspace_save(req: WorkspaceSaveRequest, request: Request):
     )
 
 
+def _resolve_project_id(project_path: Path, user_id: str) -> str | None:
+    """从工作区路径解析私有项目 ID（无法解析时返回 None，不阻断状态查询）。"""
+    from tools.code_tool.path_security import get_private_project_id_for_workspace
+    try:
+        return get_private_project_id_for_workspace(project_path, user_id)
+    except Exception:
+        return None
+
+
 @app.get("/api/workspace/status")
 async def workspace_status(request: Request, session_id: str = Query(..., description="会话 ID")):
     """查询当前会话已打开的项目 + 独立打开文件列表。
@@ -1307,10 +1320,10 @@ async def workspace_status(request: Request, session_id: str = Query(..., descri
     返回：
       {
         session_id,
-        projects:        [{name, path}, ...],   # 已打开的项目目录
-        count_projects:  int,                   # 项目数量
-        open_files:      [{name, path}, ...],   # 前端独立打开的文件（★ 单文件场景使用）
-        count_open_files:int,                   # 独立文件数量
+        projects:        [{name, path, project_id}, ...],   # 已打开的项目目录
+        count_projects:  int,                              # 项目数量
+        open_files:      [{name, path}, ...],              # 前端独立打开的文件（★ 单文件场景使用）
+        count_open_files:int,                              # 独立文件数量
       }
     """
     validate_session_id(session_id)
@@ -1326,9 +1339,18 @@ async def workspace_status(request: Request, session_id: str = Query(..., descri
     workspaces = get_session_workspaces(session_id)
     open_files = get_session_open_files(session_id)
     require_current(session_id, session_generation)
+    user_id = request.state.auth_session.user.id
+    projects_payload = [
+        {
+            "name": p.name,
+            "path": str(p),
+            "project_id": _resolve_project_id(p, user_id),
+        }
+        for p in workspaces
+    ]
     return {
         "session_id": session_id,
-        "projects": [{"name": p.name, "path": str(p)} for p in workspaces],
+        "projects": projects_payload,
         "count_projects": len(workspaces),
         "open_files": [{"name": p.name, "path": str(p)} for p in open_files],
         "count_open_files": len(open_files),

@@ -130,7 +130,7 @@ WEB_FETCH_TIMEOUT = 8
 WEB_CONTENT_MAX_CHARS = 800
 
 # ---------------------- LLM 配置 ----------------------
-LLM_MODEL = "deepseek-v4-flash-0731"
+LLM_MODEL = "deepseek-v4-pro-0813"
 LLM_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 LLM_TEMPERATURE = 0.0
 
