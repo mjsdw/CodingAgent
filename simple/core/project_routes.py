@@ -279,9 +279,6 @@ async def upload_project_file(
             user_id, project_id, relative_path, content, sha256,
         )
     except Exception as exc:
-        import traceback as _tb
-        print(f"DEBUG upload_project_file exc: {type(exc).__name__}: {exc}")
-        _tb.print_exc()
         mapped = _map_store_error(exc)
         if mapped:
             return mapped
